@@ -13,7 +13,8 @@ export 'src/errors.dart'
         OutOfRemainingSessionsError,
         IntegrationNotFoundException,
         AlreadyAcknowledgedError,
-        AlreadyRespondedError;
+        AlreadyRespondedError,
+        JsDisabledError;
 
 export 'src/builders/builder.dart' show Builder, CreateBuilder, UpdateBuilder;
 export 'src/builders/image.dart' show ImageBuilder;

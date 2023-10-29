@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
+import 'dart:html';
+import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:eterl/eterl.dart';
 import 'package:nyxx/src/api_options.dart';
 import 'package:nyxx/src/errors.dart';
@@ -161,7 +163,7 @@ class ShardRunner {
           // doesn't change closeCode if we set it manually.
           // 1001 is the close code used for a ping failure, so include it in the resumable codes.
           const resumableCodes = [null, 1001, 4000, 4001, 4002, 4003, 4007, 4008, 4009];
-          final closeCode = connection!.websocket.closeCode;
+          final closeCode = connection!.closeCode;
           canResume = canResume || resumableCodes.contains(closeCode);
 
           // If we encounter a fatal error, exit the shard.
@@ -215,7 +217,7 @@ class ShardRunner {
       data: {
         'token': data.apiOptions.token,
         'properties': {
-          'os': Platform.operatingSystem,
+          'os': 'browser',
           'browser': 'nyxx',
           'device': 'nyxx',
         },
@@ -242,20 +244,42 @@ class ShardRunner {
 }
 
 class ShardConnection extends Stream<GatewayEvent> implements StreamSink<Send> {
-  final WebSocket websocket;
+  Never get websocket => throw JsDisabledError('ShardConnection.websocket');
+  @Deprecated('Only present for JS support')
+  // ignore: non_constant_identifier_names
+  final WebSocket JS_ONLY_websocket;
   final Stream<GatewayEvent> events;
   final ShardRunner runner;
 
-  ShardConnection(this.websocket, this.events, this.runner);
+  int? get closeCode => _closeCode;
+  int? _closeCode;
+
+  final Completer<void> _doneCompleter = Completer();
+
+  ShardConnection(this.JS_ONLY_websocket, this.events, this.runner) {
+    // ignore: deprecated_member_use_from_same_package
+    JS_ONLY_websocket.onClose.listen((event) {
+      _closeCode = event.code;
+      _doneCompleter.complete();
+    });
+  }
 
   static Future<ShardConnection> connect(String gatewayUri, ShardRunner runner) async {
-    final connection = await WebSocket.connect(gatewayUri);
-    connection.pingInterval = const Duration(seconds: 20);
+    final connection = WebSocket(gatewayUri);
+    connection.binaryType = 'arraybuffer';
+
+    await connection.onOpen.first;
 
     final uncompressedStream = switch (runner.data.apiOptions.compression) {
-      GatewayCompression.transport => decompressTransport(connection.cast<List<int>>()),
-      GatewayCompression.payload => decompressPayloads(connection),
-      GatewayCompression.none => connection,
+      GatewayCompression.transport => decompressTransport(connection.onMessage.map((event) => (event.data as ByteBuffer).asUint8List())),
+      GatewayCompression.payload => decompressPayloads(connection.onMessage.map((event) => switch (event.data) {
+            ByteBuffer buffer => buffer.asUint8List(),
+            var other => other,
+          })),
+      GatewayCompression.none => connection.onMessage.map((event) => switch (event.data) {
+            ByteBuffer buffer => buffer.asUint8List(),
+            var other => other,
+          }),
     };
 
     final dataStream = switch (runner.data.apiOptions.payloadFormat) {
@@ -292,42 +316,33 @@ class ShardConnection extends Stream<GatewayEvent> implements StreamSink<Send> {
       GatewayPayloadFormat.etf => eterl.pack(payload),
     };
 
-    websocket.add(encoded);
+    assert(encoded is String || encoded is TypedData);
+
+    // ignore: deprecated_member_use_from_same_package
+    JS_ONLY_websocket.send(encoded);
   }
 
   @override
-  void addError(Object error, [StackTrace? stackTrace]) => websocket.addError(error, stackTrace);
+  void addError(Object error, [StackTrace? stackTrace]) => throw JsDisabledError('ShardConnection.addError');
 
   @override
   Future<void> addStream(Stream<Send> stream) => stream.forEach(add);
 
   @override
-  Future<void> close([int? code]) => websocket.close(code ?? 1000);
+  // ignore: deprecated_member_use_from_same_package
+  Future<void> close([int? code]) async => JS_ONLY_websocket.close(code ?? 1000);
 
   @override
-  Future<void> get done => websocket.done;
+  Future<void> get done => _doneCompleter.future;
 }
 
-Stream<dynamic> decompressTransport(Stream<List<int>> raw) {
-  final filter = RawZLibFilter.inflateFilter();
-
-  return raw.map((chunk) {
-    filter.process(chunk, 0, chunk.length);
-
-    final buffer = <int>[];
-    for (List<int>? decoded = []; decoded != null; decoded = filter.processed()) {
-      buffer.addAll(decoded);
-    }
-
-    return buffer;
-  });
-}
+Stream<dynamic> decompressTransport(Stream<List<int>> raw) => throw JsDisabledError('transport compression');
 
 Stream<dynamic> decompressPayloads(Stream<dynamic> raw) => raw.map((message) {
       if (message is String) {
         return message;
       } else {
-        return zlib.decode(message as List<int>);
+        return ZLibDecoder().decodeBytes(message as List<int>);
       }
     });
 

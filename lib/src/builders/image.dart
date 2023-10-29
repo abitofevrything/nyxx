@@ -1,7 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:path/path.dart' as p;
+import 'package:nyxx/src/errors.dart';
 
 class ImageBuilder {
   List<int> data;
@@ -15,27 +14,7 @@ class ImageBuilder {
 
   ImageBuilder.gif(this.data) : format = 'gif';
 
-  static Future<ImageBuilder> fromFile(File file, {String? format}) async {
-    format ??= p.extension(file.path);
-
-    const formats = {
-      'png': 'png',
-      'jpeg': 'jpeg',
-      'jpg': 'jpeg',
-      'gif': 'gif',
-      'json': 'lottie',
-    };
-
-    final actualFormat = formats[format];
-
-    if (actualFormat == null) {
-      throw ArgumentError('Invalid format $format');
-    }
-
-    final data = await file.readAsBytes();
-
-    return ImageBuilder(data: data, format: actualFormat);
-  }
+  static Future<ImageBuilder> fromFile(dynamic file, {String? format}) => throw JsDisabledError('ImageBuilder.fromFile');
 
   String buildDataString() => 'data:image/$format;base64,${base64Encode(data)}';
 

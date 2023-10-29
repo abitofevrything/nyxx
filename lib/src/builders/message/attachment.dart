@@ -1,8 +1,5 @@
-import 'dart:io';
-
-import 'package:path/path.dart' as path_lib;
-
 import 'package:nyxx/src/builders/builder.dart';
+import 'package:nyxx/src/errors.dart';
 import 'package:nyxx/src/models/message/attachment.dart';
 
 class AttachmentBuilder extends Builder<Attachment> {
@@ -14,15 +11,7 @@ class AttachmentBuilder extends Builder<Attachment> {
 
   AttachmentBuilder({required this.data, required this.fileName, this.description});
 
-  static Future<AttachmentBuilder> fromFile(File file, {String? description}) async {
-    final data = await file.readAsBytes();
-
-    return AttachmentBuilder(
-      data: data,
-      fileName: path_lib.basename(file.path),
-      description: description,
-    );
-  }
+  static Future<AttachmentBuilder> fromFile(dynamic file, {String? description}) => throw JsDisabledError('AttachmentBuilder.fromFile');
 
   @override
   Map<String, Object?> build() => {

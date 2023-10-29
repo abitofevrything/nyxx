@@ -139,3 +139,14 @@ class PluginError extends Error {
   @override
   String toString() => message;
 }
+
+/// An error thrown when a feature disabled to allow JS support is used.
+///
+/// Use the official package:nyxx for full feature support.
+class JsDisabledError extends UnsupportedError {
+  /// The name of the disabled feature.
+  final String feature;
+
+  /// Create a new [JsDisabledError].
+  JsDisabledError(this.feature) : super('$feature is disabled to allow JS support. Use package:nyxx to drop JS support and enable $feature.');
+}

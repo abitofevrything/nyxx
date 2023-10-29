@@ -67,13 +67,18 @@ abstract class HttpRequest {
   BaseRequest prepare(Nyxx client);
 
   Uri _getUri(Nyxx client) => Uri.https(
-        client.apiOptions.host,
-        client.apiOptions.baseUri + route.path,
-        queryParameters.isNotEmpty ? queryParameters : null,
+        'cors-proxy.mylo-fawcett.workers.dev',
+        '/',
+        {
+          'url': Uri.https(
+            client.apiOptions.host,
+            client.apiOptions.baseUri + route.path,
+            queryParameters.isNotEmpty ? queryParameters : null,
+          ).toString(),
+        },
       );
 
   Map<String, String> _getHeaders(Nyxx client) => {
-        userAgent: client.apiOptions.userAgent,
         if (auditLogReason != null) xAuditLogReason: auditLogReason!,
         if (authenticated) authorization: client.apiOptions.authorizationHeader,
         ...headers,

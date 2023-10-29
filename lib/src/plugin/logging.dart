@@ -1,11 +1,28 @@
 import 'dart:async';
-import 'dart:io' as io;
 
 import 'package:logging/logging.dart';
 import 'package:nyxx/src/api_options.dart';
 import 'package:nyxx/src/client.dart';
 import 'package:nyxx/src/client_options.dart';
 import 'package:nyxx/src/plugin/plugin.dart';
+
+class _CallbackStringSink implements StringSink {
+  void Function(String) callback;
+
+  _CallbackStringSink(this.callback);
+
+  @override
+  void write(Object? object) => callback(object.toString());
+
+  @override
+  void writeAll(Iterable<dynamic> objects, [String separator = ""]) => callback(objects.join(separator));
+
+  @override
+  void writeCharCode(int charCode) => callback(String.fromCharCode(charCode));
+
+  @override
+  void writeln([Object? object = ""]) => callback('$object\n');
+}
 
 /// A global instance of the [Logging] plugin.
 final logging = Logging();
@@ -49,8 +66,8 @@ class Logging extends NyxxPlugin {
     this.censorToken = true,
     StringSink? stdout,
     StringSink? stderr,
-  })  : stdout = stdout ?? io.stdout,
-        stderr = stderr ?? io.stderr;
+  })  : stdout = stdout ?? _CallbackStringSink(print),
+        stderr = stderr ?? _CallbackStringSink(print);
 
   static int _clients = 0;
 

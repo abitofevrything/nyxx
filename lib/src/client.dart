@@ -20,7 +20,18 @@ import 'package:oauth2/oauth2.dart';
 import 'package:runtime_type/runtime_type.dart';
 
 /// A helper function to nest and execute calls to plugin connect methods.
-Future<T> _doConnect<T extends Nyxx>(ApiOptions apiOptions, ClientOptions clientOptions, Future<T> Function() connect, List<NyxxPlugin> plugins) {
+Future<T> _doConnect<T extends Nyxx>(ApiOptions apiOptions, ClientOptions clientOptions, Future<T> Function() connect, List<NyxxPlugin> plugins) async {
+  print('''
+You are using a patched version of nyxx with JS support.
+
+Some features are disabled, and performance will be reduced. You might encounter rate limiting or authentication issues, and shards will not have a performance
+benefit.
+
+This patched version uses a proxy to bypass CORS due to Discord not implementing CORS for their API (which makes sense). A proxy hosted on Cloudflare workers is
+used, but I encourage you to change this. Clone this repo and checkout the hack/web-support branch, then search for "cors-proxy.mylo-fawcett.workers.dev" to see
+where the proxy is used and replace it with your own.
+''');
+
   final actualClientType = RuntimeType<T>();
 
   for (final plugin in plugins) {
