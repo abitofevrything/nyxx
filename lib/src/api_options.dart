@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:nyxx/src/builders/presence.dart';
 import 'package:nyxx/src/intents.dart';
 import 'package:nyxx/src/utils/flags.dart';
@@ -102,6 +104,18 @@ class GatewayApiOptions extends RestApiOptions {
         if (compression == GatewayCompression.transport) 'compress': 'zlib-stream',
       };
 
+  /// The operating system name to report when identifying to the Gateway.
+  @Deprecated('Not officially supported')
+  final String operatingSystem;
+
+  /// The browser to report when identifying to the Gateway.
+  @Deprecated('Not officially supported')
+  final String browser;
+
+  /// The device to report when identifying to the Gateway.
+  @Deprecated('Not officially supported')
+  final String device;
+
   /// Create a new [GatewayApiOptions].
   GatewayApiOptions({
     required super.token,
@@ -113,7 +127,10 @@ class GatewayApiOptions extends RestApiOptions {
     this.totalShards,
     this.largeThreshold,
     this.initialPresence,
-  });
+    this.browser = 'nyxx',
+    this.device = 'nyxx',
+    String? operatingSystem,
+  }) : operatingSystem = operatingSystem ?? Platform.operatingSystem;
 }
 
 /// The format of Gateway payloads.
