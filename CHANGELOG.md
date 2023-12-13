@@ -1,5 +1,17 @@
+## 6.0.3
+__26.11.2023__
+
+- bug: Fix incorrect serialization of autocompletion interaction responses (again)
+- bug: Try to fix invalid sessions triggered by Gateway reconnects
+
+## 6.0.2
+__16.11.2023__
+
+- bug: Fix incorrect assertions in interaction.respond
+- bug: Fix incorrect serialization of autocompletion interaction responses
+
 ## 6.0.1
-__01.10.2023__
+__01.11.2023__
 
 - bug: Fix incorrect serialization of CommandOptionBuilder.
 - bug: Fix customId missing from ButtonBuilder constructor.
