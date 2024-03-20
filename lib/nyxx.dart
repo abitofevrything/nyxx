@@ -14,15 +14,15 @@ export 'src/errors.dart'
         IntegrationNotFoundException,
         AlreadyAcknowledgedError,
         AlreadyRespondedError,
-        JsDisabledError;
-
+        JsDisabledError,
+        PluginError;
 export 'src/builders/builder.dart' show Builder, CreateBuilder, UpdateBuilder;
 export 'src/builders/image.dart' show ImageBuilder;
 export 'src/builders/user.dart' show UserUpdateBuilder;
 export 'src/builders/permission_overwrite.dart' show PermissionOverwriteBuilder;
 export 'src/builders/channel/channel_position.dart' show ChannelPositionBuilder;
 export 'src/builders/channel/forum_tag.dart' show ForumTagBuilder;
-export 'src/builders/channel/group_dm.dart' show GroupDmUpdateBuilder;
+export 'src/builders/channel/group_dm.dart' show GroupDmUpdateBuilder, DmRecipientBuilder;
 export 'src/builders/channel/guild_channel.dart'
     show
         ForumChannelUpdateBuilder,
@@ -46,7 +46,7 @@ export 'src/builders/message/attachment.dart' show AttachmentBuilder;
 export 'src/builders/message/embed.dart' show EmbedBuilder, EmbedAuthorBuilder, EmbedFieldBuilder, EmbedFooterBuilder, EmbedImageBuilder, EmbedThumbnailBuilder;
 export 'src/builders/message/message.dart' show MessageBuilder, MessageUpdateBuilder;
 export 'src/builders/message/component.dart'
-    show ActionRowBuilder, ButtonBuilder, MessageComponentBuilder, SelectMenuBuilder, SelectMenuOptionBuilder, TextInputBuilder;
+    show ActionRowBuilder, ButtonBuilder, MessageComponentBuilder, SelectMenuBuilder, SelectMenuOptionBuilder, TextInputBuilder, DefaultValue;
 export 'src/builders/webhook.dart' show WebhookBuilder, WebhookUpdateBuilder;
 export 'src/builders/guild/guild.dart' show GuildBuilder, GuildUpdateBuilder;
 export 'src/builders/guild/member.dart' show CurrentMemberUpdateBuilder, MemberBuilder, MemberUpdateBuilder;
@@ -101,7 +101,8 @@ export 'src/http/managers/interaction_manager.dart' show InteractionManager;
 export 'src/http/managers/entitlement_manager.dart' show EntitlementManager;
 
 export 'src/gateway/gateway.dart' show Gateway;
-export 'src/gateway/message.dart' show Disconnecting, Dispose, ErrorReceived, EventReceived, GatewayMessage, Send, Sent, ShardData, ShardMessage;
+export 'src/gateway/message.dart'
+    show Disconnecting, Dispose, ErrorReceived, EventReceived, GatewayMessage, Send, Sent, ShardData, ShardMessage, Identify, RequestingIdentify, StartShard;
 export 'src/gateway/shard.dart' show Shard;
 
 export 'src/models/discord_color.dart' show DiscordColor;
@@ -152,6 +153,8 @@ export 'src/models/message/component.dart'
         MessageComponent,
         SelectMenuComponent,
         SelectMenuOption,
+        SelectMenuDefaultValue,
+        SelectMenuDefaultValueType,
         TextInputComponent,
         ButtonStyle,
         MessageComponentType,
@@ -173,7 +176,8 @@ export 'src/models/guild/guild.dart'
         MfaLevel,
         NsfwLevel,
         PremiumTier,
-        VerificationLevel;
+        VerificationLevel,
+        UserGuild;
 export 'src/models/guild/integration.dart' show PartialIntegration, Integration, IntegrationAccount, IntegrationApplication, IntegrationExpireBehavior;
 export 'src/models/guild/member.dart' show Member, MemberFlags, PartialMember;
 export 'src/models/guild/onboarding.dart' show Onboarding, OnboardingPrompt, OnboardingPromptOption, OnboardingPromptType;
@@ -296,7 +300,8 @@ export 'src/models/interaction.dart'
         ModalSubmitInteraction,
         PingInteraction;
 export 'src/models/entitlement.dart' show Entitlement, PartialEntitlement, EntitlementType;
-export 'src/models/sku.dart' show Sku, SkuType;
+export 'src/models/sku.dart' show Sku, SkuType, SkuFlags;
+export 'src/models/oauth2.dart' show OAuth2Information;
 
 export 'src/utils/flags.dart' show Flag, Flags;
 export 'src/intents.dart' show GatewayIntents;
@@ -317,3 +322,4 @@ export 'package:http/http.dart'
         StreamedResponse;
 export 'package:logging/logging.dart' show Logger, Level;
 export 'package:runtime_type/runtime_type.dart' show RuntimeType;
+export 'package:oauth2/oauth2.dart' show Credentials;

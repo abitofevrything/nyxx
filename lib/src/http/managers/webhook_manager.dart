@@ -56,6 +56,7 @@ class WebhookManager extends Manager<Webhook> {
     );
   }
 
+  /// Parse a [WebhookAuthor] from [raw].
   WebhookAuthor parseWebhookAuthor(Map<String, Object?> raw) {
     return WebhookAuthor(
       id: Snowflake.parse(raw['id']!),
@@ -81,11 +82,11 @@ class WebhookManager extends Manager<Webhook> {
   }
 
   @override
-  Future<Webhook> create(WebhookBuilder builder) async {
+  Future<Webhook> create(WebhookBuilder builder, {String? auditLogReason}) async {
     final route = HttpRoute()
       ..channels(id: builder.channelId.toString())
       ..webhooks();
-    final request = BasicRequest(route, method: 'POST', body: jsonEncode(builder.build()));
+    final request = BasicRequest(route, method: 'POST', body: jsonEncode(builder.build()), auditLogReason: auditLogReason);
 
     final response = await client.httpHandler.executeSafe(request);
     final webhook = parse(response.jsonBody as Map<String, Object?>);
@@ -95,12 +96,12 @@ class WebhookManager extends Manager<Webhook> {
   }
 
   @override
-  Future<Webhook> update(Snowflake id, WebhookUpdateBuilder builder, {String? token}) async {
+  Future<Webhook> update(Snowflake id, WebhookUpdateBuilder builder, {String? token, String? auditLogReason}) async {
     final route = HttpRoute()..webhooks(id: id.toString());
     if (token != null) {
       route.add(HttpRoutePart(token));
     }
-    final request = BasicRequest(route, method: 'PATCH', body: jsonEncode(builder.build()), authenticated: token == null);
+    final request = BasicRequest(route, method: 'PATCH', body: jsonEncode(builder.build()), authenticated: token == null, auditLogReason: auditLogReason);
 
     final response = await client.httpHandler.executeSafe(request);
     final webhook = parse(response.jsonBody as Map<String, Object?>);
@@ -151,7 +152,8 @@ class WebhookManager extends Manager<Webhook> {
   }
 
   /// Execute a webhook.
-  Future<Message?> execute(Snowflake id, MessageBuilder builder, {required String token, bool? wait, Snowflake? threadId}) async {
+  Future<Message?> execute(Snowflake id, MessageBuilder builder,
+      {required String token, bool? wait, Snowflake? threadId, String? threadName, List<Snowflake>? appliedTags, String? username, String? avatarUrl}) async {
     final route = HttpRoute()
       ..webhooks(id: id.toString())
       ..add(HttpRoutePart(token));
@@ -160,7 +162,13 @@ class WebhookManager extends Manager<Webhook> {
     final HttpRequest request;
     if (!identical(builder.attachments, sentinelList) && builder.attachments?.isNotEmpty == true) {
       final attachments = builder.attachments!;
-      final payload = builder.build();
+      final payload = {
+        ...builder.build(),
+        if (threadName != null) 'thread_name': threadName,
+        if (appliedTags != null) 'applied_tags': appliedTags.map((e) => e.toString()),
+        if (username != null) 'username': username,
+        if (avatarUrl != null) 'avatar_url': avatarUrl,
+      };
 
       final files = <MultipartFile>[];
       for (int i = 0; i < attachments.length; i++) {
@@ -185,7 +193,11 @@ class WebhookManager extends Manager<Webhook> {
       request = BasicRequest(
         route,
         method: 'POST',
-        body: jsonEncode(builder.build()),
+        body: jsonEncode({
+          ...builder.build(),
+          if (threadName != null) 'thread_name': threadName,
+          if (appliedTags != null) 'applied_tags': appliedTags.map((e) => e.toString()),
+        }),
         queryParameters: queryParameters,
         authenticated: false,
       );

@@ -34,6 +34,7 @@ class PartialMessage extends WritableSnowflakeEntity<Message> {
   Snowflake get channelId => manager.channelId;
 
   /// {@macro partial_message}
+  /// @nodoc
   PartialMessage({required super.id, required this.manager});
 
   /// The channel this message was sent in.
@@ -73,6 +74,9 @@ class PartialMessage extends WritableSnowflakeEntity<Message> {
 
   /// Deletes reaction the current user has made on this message.
   Future<void> deleteOwnReaction(ReactionBuilder emoji) => manager.deleteOwnReaction(id, emoji);
+
+  /// Get a list of users that reacted with a given emoji on a message.
+  Future<List<User>> fetchReactions(ReactionBuilder emoji, {Snowflake? after, int? limit}) => manager.fetchReactions(id, emoji, after: after, limit: limit);
 }
 
 /// {@template message}
@@ -186,6 +190,7 @@ class Message extends PartialMessage {
   final ResolvedData? resolved;
 
   /// {@macro message}
+  /// @nodoc
   Message({
     required super.id,
     required super.manager,
@@ -261,7 +266,11 @@ enum MessageType {
   stageEnd._(28),
   stageSpeaker._(29),
   stageTopic._(31),
-  guildApplicationPremiumSubscription._(32);
+  guildApplicationPremiumSubscription._(32),
+  guildIncidentAlertModeEnabled._(36),
+  guildIncidentAlertModeDisabled._(37),
+  guildIncidentReportRaid._(38),
+  guildIncidentReportFalseAlarm._(39);
 
   /// The value of this [MessageType].
   final int value;
@@ -375,6 +384,7 @@ class MessageInteraction with ToStringHelper {
   final PartialMember? member;
 
   /// {@macro message_interaction}
+  /// @nodoc
   MessageInteraction({
     required this.id,
     required this.type,

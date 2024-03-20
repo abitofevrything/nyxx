@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' show MultipartFile;
 import 'package:nyxx/src/builders/builder.dart';
+import 'package:nyxx/src/builders/channel/group_dm.dart';
 import 'package:nyxx/src/builders/channel/stage_instance.dart';
 import 'package:nyxx/src/builders/channel/thread.dart';
 import 'package:nyxx/src/builders/invite.dart';
@@ -427,6 +428,7 @@ class ChannelManager extends ReadOnlyManager<Channel> {
     );
   }
 
+  /// Parse a [StageInstance] from [raw].
   StageInstance parseStageInstance(Map<String, Object?> raw) {
     return StageInstance(
       id: Snowflake.parse(raw['id']!),
@@ -489,7 +491,7 @@ class ChannelManager extends ReadOnlyManager<Channel> {
     final route = HttpRoute()
       ..channels(id: id.toString())
       ..permissions(id: builder.id.toString());
-    final request = BasicRequest(route, method: 'PUT', body: jsonEncode(builder.build()));
+    final request = BasicRequest(route, method: 'PUT', body: jsonEncode(builder.build(includeId: false)));
 
     await client.httpHandler.executeSafe(request);
   }
@@ -607,7 +609,7 @@ class ChannelManager extends ReadOnlyManager<Channel> {
 
       request = MultipartRequest(
         route,
-        method: 'PATCH',
+        method: 'POST',
         jsonPayload: jsonEncode(payload),
         files: files,
       );
@@ -824,5 +826,23 @@ class ChannelManager extends ReadOnlyManager<Channel> {
     await client.httpHandler.executeSafe(request);
 
     stageInstanceCache.remove(channelId);
+  }
+
+  Future<void> addRecipient(Snowflake channelId, Snowflake userId, DmRecipientBuilder builder) async {
+    final route = HttpRoute()
+      ..channels(id: channelId.toString())
+      ..recipients(id: userId.toString());
+    final request = BasicRequest(route, method: 'PUT', body: jsonEncode(builder.build()));
+
+    await client.httpHandler.executeSafe(request);
+  }
+
+  Future<void> removeRecipient(Snowflake channelId, Snowflake userId) async {
+    final route = HttpRoute()
+      ..channels(id: channelId.toString())
+      ..recipients(id: userId.toString());
+    final request = BasicRequest(route, method: 'DELETE');
+
+    await client.httpHandler.executeSafe(request);
   }
 }

@@ -29,6 +29,9 @@ class Shard extends Stream<ShardMessage> implements StreamSink<GatewayMessage> {
   /// The stream on which events from the runner are received.
   final Stream<dynamic> receiveStream;
 
+  final StreamController<ShardMessage> _rawReceiveController = StreamController();
+  final StreamController<ShardMessage> _transformedReceiveController = StreamController.broadcast();
+
   /// The port on which events are sent to the runner.
   Never get sendPort => throw JsDisabledError('Shard.sendPort');
 
@@ -36,6 +39,8 @@ class Shard extends Stream<ShardMessage> implements StreamSink<GatewayMessage> {
   @Deprecated('Only present for JS support')
   // ignore: non_constant_identifier_names
   final Sink<dynamic> JS_ONLY_sendSink;
+
+  final StreamController<GatewayMessage> _sendController = StreamController();
 
   /// The client this [Shard] is for.
   final NyxxGateway client;
@@ -54,6 +59,24 @@ class Shard extends Stream<ShardMessage> implements StreamSink<GatewayMessage> {
 
   /// Create a new [Shard].
   Shard(this.id, this.JS_ONLY_exitFuture, this.receiveStream, this.JS_ONLY_sendSink, this.client) {
+    client.initialized.then((_) {
+      final sendStream = client.options.plugins.fold(
+        _sendController.stream,
+        (previousValue, plugin) => plugin.interceptGatewayMessages(this, previousValue),
+      );
+
+      // ignore: deprecated_member_use_from_same_package
+      sendStream.listen(JS_ONLY_sendSink.add, cancelOnError: false, onDone: close);
+
+      final transformedReceiveStream = client.options.plugins.fold(
+        _rawReceiveController.stream,
+        (previousValue, plugin) => plugin.interceptShardMessages(this, previousValue),
+      );
+      transformedReceiveStream.pipe(_transformedReceiveController);
+    });
+
+    receiveStream.cast<ShardMessage>().pipe(_rawReceiveController);
+
     final subscription = listen((message) {
       if (message is Sent) {
         logger
@@ -97,6 +120,8 @@ class Shard extends Stream<ShardMessage> implements StreamSink<GatewayMessage> {
             logger.info('Reconnected to Gateway');
           }
         }
+      } else if (message is RequestingIdentify) {
+        logger.fine('Ready to identify');
       }
     });
 
@@ -134,6 +159,7 @@ class Shard extends Stream<ShardMessage> implements StreamSink<GatewayMessage> {
 
     final sendPort = await receiveStream.first as Sink<dynamic>;
 
+    logger.fine('Shard runner ready');
     return Shard(id, exitFuture, receiveStream, sendPort, client);
   }
 
@@ -153,9 +179,11 @@ class Shard extends Stream<ShardMessage> implements StreamSink<GatewayMessage> {
         ..finer('Opcode: ${event.opcode.value}, Data: ${event.data}');
     } else if (event is Dispose) {
       logger.info('Disposing');
+    } else if (event is Identify) {
+      logger.info('Connecting to Gateway');
     }
-    // ignore: deprecated_member_use_from_same_package
-    JS_ONLY_sendSink.add(event);
+
+    _sendController.add(event);
   }
 
   @override
@@ -165,7 +193,7 @@ class Shard extends Stream<ShardMessage> implements StreamSink<GatewayMessage> {
     void Function()? onDone,
     bool? cancelOnError,
   }) {
-    return receiveStream.cast<ShardMessage>().listen(onData, onError: onError, onDone: onDone, cancelOnError: cancelOnError);
+    return _transformedReceiveController.stream.listen(onData, onError: onError, onDone: onDone, cancelOnError: cancelOnError);
   }
 
   @override
@@ -177,12 +205,14 @@ class Shard extends Stream<ShardMessage> implements StreamSink<GatewayMessage> {
     Future<void> doClose() async {
       add(Dispose());
 
-      // Wait for disconnection confirmation
-      await firstWhere((message) => message is Disconnecting);
+      _sendController.close();
+      // _rawReceiveController and _transformedReceiveController are closed by the piped
+      // receive port stream being closed.
 
       // Give the isolate time to shut down cleanly, but kill it if it takes too long.
       try {
-        await drain().timeout(const Duration(seconds: 5));
+        // Wait for disconnection confirmation.
+        await firstWhere((message) => message is Disconnecting).then(drain).timeout(const Duration(seconds: 5));
       } on TimeoutException {
         logger.warning('Isolate took too long to shut down, killing it');
         throw JsDisabledError('shard isolate killing');
