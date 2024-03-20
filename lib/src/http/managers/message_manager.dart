@@ -79,7 +79,7 @@ class MessageManager extends Manager<Message> {
       referencedMessage: maybeParse(raw['referenced_message'], parse),
       interaction: maybeParse(
         raw['interaction'],
-        (Map<String, Object?> raw) => parseMessageInteraction(raw),
+        (Map<String, Object?> raw) => parseMessageInteraction(raw, guildId: guildId),
       ),
       thread: maybeParse(raw['thread'], client.channels.parse) as Thread?,
       components: maybeParseMany(raw['components'], parseMessageComponent),
@@ -274,6 +274,7 @@ class MessageManager extends Manager<Message> {
           options: maybeParseMany(raw['options'], parseSelectMenuOption),
           channelTypes: maybeParseMany(raw['channel_types'], ChannelType.parse),
           placeholder: raw['placeholder'] as String?,
+          defaultValues: maybeParseMany(raw['default_values'], parseSelectMenuDefaultValue),
           minValues: raw['min_values'] as int?,
           maxValues: raw['max_values'] as int?,
           isDisabled: raw['disabled'] as bool?,
@@ -291,7 +292,14 @@ class MessageManager extends Manager<Message> {
     );
   }
 
-  MessageInteraction parseMessageInteraction(Map<String, Object?> raw) {
+  SelectMenuDefaultValue parseSelectMenuDefaultValue(Map<String, Object?> raw) {
+    return SelectMenuDefaultValue(
+      id: Snowflake.parse(raw['id']!),
+      type: SelectMenuDefaultValueType.parse(raw['type'] as String),
+    );
+  }
+
+  MessageInteraction parseMessageInteraction(Map<String, Object?> raw, {Snowflake? guildId}) {
     final user = client.users.parse(raw['user'] as Map<String, Object?>);
 
     return MessageInteraction(
@@ -299,10 +307,9 @@ class MessageManager extends Manager<Message> {
       type: InteractionType.parse(raw['type'] as int),
       name: raw['name'] as String,
       user: user,
-      // TODO: Find a way to get the guild ID.
       member: maybeParse(
         raw['member'],
-        (Map<String, Object?> raw) => client.guilds[Snowflake.zero].members[user.id],
+        (Map<String, Object?> raw) => client.guilds[guildId ?? Snowflake.zero].members[user.id],
       ),
     );
   }
@@ -451,12 +458,17 @@ class MessageManager extends Manager<Message> {
   /// Bulk delete many messages at once
   ///
   /// This will throw an error if any of [ids] is not a valid message ID or if any of the messages are from before [Snowflake.bulkDeleteLimit].
-  Future<void> bulkDelete(Iterable<Snowflake> ids) async {
+  Future<void> bulkDelete(Iterable<Snowflake> ids, {String? auditLogReason}) async {
     final route = HttpRoute()
       ..channels(id: channelId.toString())
       ..messages()
       ..bulkDelete();
-    final request = BasicRequest(route, method: 'POST', body: jsonEncode(ids.map((e) => e.toString()).toList()));
+    final request = BasicRequest(
+      route,
+      method: 'POST',
+      body: jsonEncode({'messages': ids.map((e) => e.toString()).toList()}),
+      auditLogReason: auditLogReason,
+    );
 
     await client.httpHandler.executeSafe(request);
   }
@@ -555,12 +567,18 @@ class MessageManager extends Manager<Message> {
   }
 
   /// Get a list of users that reacted with a given emoji on a message.
-  Future<List<User>> fetchReactions(Snowflake id, ReactionBuilder emoji) async {
+  Future<List<User>> fetchReactions(Snowflake id, ReactionBuilder emoji, {Snowflake? after, int? limit}) async {
     final route = HttpRoute()
       ..channels(id: channelId.toString())
       ..messages(id: id.toString())
       ..reactions(emoji: emoji.build());
-    final request = BasicRequest(route);
+    final request = BasicRequest(
+      route,
+      queryParameters: {
+        if (after != null) 'after': after.toString(),
+        if (limit != null) 'limit': limit.toString(),
+      },
+    );
 
     final response = await client.httpHandler.executeSafe(request);
     final users = parseMany(response.jsonBody as List, client.users.parse);

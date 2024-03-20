@@ -91,6 +91,22 @@ class GuildManager extends Manager<Guild> {
     );
   }
 
+  /// Parse [UserGuild] from [raw].
+  UserGuild parseUserGuild(Map<String, Object?> raw) {
+    final id = Snowflake.parse(raw['id']!);
+    return UserGuild(
+      id: id,
+      manager: this,
+      name: raw['name'] as String,
+      iconHash: raw['icon'] as String?,
+      isOwnedByCurrentUser: raw['owner'] as bool,
+      currentUserPermissions: Permissions(int.parse(raw['permissions'] as String)),
+      features: parseGuildFeatures(raw['features'] as List),
+      approximateMemberCount: raw['approximate_member_count'] as int?,
+      approximatePresenceCount: raw['approximate_presence_count'] as int?,
+    );
+  }
+
   static final Map<String, Flag<GuildFeatures>> _nameToGuildFeature = {
     'ANIMATED_BANNER': GuildFeatures.animatedBanner,
     'ANIMATED_ICON': GuildFeatures.animatedIcon,
@@ -269,6 +285,7 @@ class GuildManager extends Manager<Guild> {
     );
   }
 
+  /// Parse a [GuildTemplate] from [raw].
   GuildTemplate parseGuildTemplate(Map<String, Object?> raw) {
     final sourceGuildId = Snowflake.parse(raw['source_guild_id']!);
 
@@ -298,6 +315,7 @@ class GuildManager extends Manager<Guild> {
           for (final role in ((raw['serialized_source_guild'] as Map<String, Object?>)['roles'] as List).cast<Map<String, Object?>>())
             {
               'position': 0,
+              'flags': 0,
               ...role,
             },
         ],
@@ -393,7 +411,7 @@ class GuildManager extends Manager<Guild> {
     return channel;
   }
 
-  ///Update the positions of channels in a guild.
+  /// Update the positions of channels in a guild.
   Future<void> updateChannelPositions(Snowflake id, List<ChannelPositionBuilder> positions) async {
     final route = HttpRoute()
       ..guilds(id: id.toString())
@@ -423,7 +441,11 @@ class GuildManager extends Manager<Guild> {
     final route = HttpRoute()
       ..guilds(id: id.toString())
       ..bans();
-    final request = BasicRequest(route);
+    final request = BasicRequest(route, queryParameters: {
+      if (limit != null) 'limit': limit.toString(),
+      if (after != null) 'after': after.toString(),
+      if (before != null) 'before': before.toString(),
+    });
 
     final response = await client.httpHandler.executeSafe(request);
     final bans = parseMany(response.jsonBody as List, parseBan);
@@ -486,7 +508,7 @@ class GuildManager extends Manager<Guild> {
     );
 
     final response = await client.httpHandler.executeSafe(request);
-    return MfaLevel.parse(response.jsonBody as int);
+    return MfaLevel.parse((response.jsonBody as Map<String, Object?>)['level'] as int);
   }
 
   /// Fetch the prune count in a guild.
@@ -708,7 +730,7 @@ class GuildManager extends Manager<Guild> {
     return templates;
   }
 
-  /// Create a guild template from a guild.
+  /// Create a guild template.
   Future<GuildTemplate> createGuildTemplate(Snowflake id, GuildTemplateBuilder builder) async {
     final route = HttpRoute()
       ..guilds(id: id.toString())

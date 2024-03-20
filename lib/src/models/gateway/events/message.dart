@@ -24,6 +24,7 @@ class MessageCreateEvent extends DispatchEvent {
   final Message message;
 
   /// {@macro message_create_event}
+  /// @nodoc
   MessageCreateEvent({required super.gateway, required this.guildId, required this.member, required this.mentions, required this.message});
 
   /// The guild the message was sent in.
@@ -50,6 +51,7 @@ class MessageUpdateEvent extends DispatchEvent {
   final Message? oldMessage;
 
   /// {@macro message_update_event}
+  /// @nodoc
   MessageUpdateEvent({
     required super.gateway,
     required this.guildId,
@@ -76,8 +78,12 @@ class MessageDeleteEvent extends DispatchEvent {
   /// The ID of the guild the message was deleted in.
   final Snowflake? guildId;
 
+  /// The message as it was cached before being deleted.
+  final Message? deletedMessage;
+
   /// {@macro message_delete_event}
-  MessageDeleteEvent({required super.gateway, required this.id, required this.channelId, required this.guildId});
+  /// @nodoc
+  MessageDeleteEvent({required super.gateway, required this.id, required this.channelId, required this.guildId, required this.deletedMessage});
 
   /// The guild the message was deleted in.
   PartialGuild? get guild => guildId == null ? null : gateway.client.guilds[guildId!];
@@ -93,6 +99,9 @@ class MessageBulkDeleteEvent extends DispatchEvent {
   /// A list of the IDs of the deleted messages.
   final List<Snowflake> ids;
 
+  /// A list of the messages that were found in cache before being deleted.
+  final List<Message> deletedMessages;
+
   /// The ID of the channel the messages were deleted in.
   final Snowflake channelId;
 
@@ -100,7 +109,8 @@ class MessageBulkDeleteEvent extends DispatchEvent {
   final Snowflake? guildId;
 
   /// {@macro message_bulk_delete_event}
-  MessageBulkDeleteEvent({required super.gateway, required this.ids, required this.channelId, required this.guildId});
+  /// @nodoc
+  MessageBulkDeleteEvent({required super.gateway, required this.ids, required this.deletedMessages, required this.channelId, required this.guildId});
 
   /// The guild the messages were deleted in.
   PartialGuild? get guild => guildId == null ? null : gateway.client.guilds[guildId!];
@@ -135,6 +145,7 @@ class MessageReactionAddEvent extends DispatchEvent {
   final Snowflake? messageAuthorId;
 
   /// {@macro message_reaction_add_event}
+  /// @nodoc
   MessageReactionAddEvent({
     required super.gateway,
     required this.userId,
@@ -182,6 +193,7 @@ class MessageReactionRemoveEvent extends DispatchEvent {
   final Emoji emoji;
 
   /// {@macro message_reaction_remove_event}
+  /// @nodoc
   MessageReactionRemoveEvent({
     required super.gateway,
     required this.userId,
@@ -218,6 +230,7 @@ class MessageReactionRemoveAllEvent extends DispatchEvent {
   final Snowflake? guildId;
 
   /// {@macro message_reaction_remove_all_event}
+  /// @nodoc
   MessageReactionRemoveAllEvent({
     required super.gateway,
     required this.channelId,
@@ -251,6 +264,7 @@ class MessageReactionRemoveEmojiEvent extends DispatchEvent {
   final PartialEmoji emoji;
 
   /// {@macro message_reaction_remove_emoji_event}
+  /// @nodoc
   MessageReactionRemoveEmojiEvent({
     required super.gateway,
     required this.channelId,

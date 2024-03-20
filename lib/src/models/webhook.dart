@@ -18,6 +18,7 @@ class PartialWebhook extends WritableSnowflakeEntity<Webhook> {
   final WebhookManager manager;
 
   /// Create a new [PartialWebhook].
+  /// @nodoc
   PartialWebhook({required super.id, required this.manager});
 
   /// Update this webhook, returning the updated webhook.
@@ -26,7 +27,8 @@ class PartialWebhook extends WritableSnowflakeEntity<Webhook> {
   /// * [WebhookManager.update]
   /// * Discord API Reference: https://discord.com/developers/docs/resources/webhook#modify-webhook
   @override
-  Future<Webhook> update(WebhookUpdateBuilder builder, {String? token}) => manager.update(id, builder, token: token);
+  Future<Webhook> update(WebhookUpdateBuilder builder, {String? token, String? auditLogReason}) =>
+      manager.update(id, builder, token: token, auditLogReason: auditLogReason);
 
   /// Delete this webhook.
   ///
@@ -45,8 +47,10 @@ class PartialWebhook extends WritableSnowflakeEntity<Webhook> {
   /// External references:
   /// * [WebhookManager.execute]
   /// * Discord API Reference: https://discord.com/developers/docs/resources/webhook#execute-webhook
-  Future<Message?> execute(MessageBuilder builder, {required String token, bool? wait, Snowflake? threadId}) =>
-      manager.execute(id, builder, token: token, wait: wait, threadId: threadId);
+  Future<Message?> execute(MessageBuilder builder,
+          {required String token, bool? wait, Snowflake? threadId, String? threadName, List<Snowflake>? appliedTags, String? username, String? avatarUrl}) =>
+      manager.execute(id, builder,
+          token: token, wait: wait, threadId: threadId, threadName: threadName, appliedTags: appliedTags, username: username, avatarUrl: avatarUrl);
 
   /// Fetch a message sent by this webhook using its [token].
   ///
@@ -88,6 +92,7 @@ class WebhookAuthor extends PartialWebhook implements MessageAuthor {
   final String username;
 
   /// Create a new [WebhookAuthor].
+  /// @nodoc
   WebhookAuthor({required super.id, required super.manager, required this.avatarHash, required this.username});
 
   @override
@@ -140,6 +145,7 @@ class Webhook extends PartialWebhook {
   final Uri? url;
 
   /// {@macro webhook}
+  /// @nodoc
   Webhook({
     required super.id,
     required super.manager,

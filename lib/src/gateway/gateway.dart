@@ -42,7 +42,6 @@ import 'package:nyxx/src/models/presence.dart';
 import 'package:nyxx/src/models/snowflake.dart';
 import 'package:nyxx/src/models/user/user.dart';
 import 'package:nyxx/src/utils/cache_helpers.dart';
-import 'package:nyxx/src/utils/iterable_extension.dart';
 import 'package:nyxx/src/utils/parsing_helpers.dart';
 
 /// Handles the connection to Discord's Gateway with shards, manages the client's cache based on Gateway events and provides an interface to the Gateway.
@@ -63,23 +62,29 @@ class Gateway extends GatewayManager with EventParser {
   final List<Shard> shards;
 
   /// A stream of messages received from all shards.
-  Stream<ShardMessage> get messages => _messagesController.stream;
+  // Adapting _messagesController.stream to a broadcast stream instead of
+  // simply making _messagesController a broadcast controller means events will
+  // be buffered until this field is initialized, which prevents events from
+  // being dropped during the connection process.
+  late final Stream<ShardMessage> messages = _messagesController.stream.asBroadcastStream();
 
-  final StreamController<ShardMessage> _messagesController = StreamController.broadcast();
+  final StreamController<ShardMessage> _messagesController = StreamController();
 
   /// A stream of dispatch events received from all shards.
-  Stream<DispatchEvent> get events => messages.map((message) {
-        if (message is! EventReceived) {
-          return null;
-        }
+  // Make this late instead of a getter so only a single subscription is made, which prevents events from being parsed multiple times.
+  late final Stream<DispatchEvent> events = messages.transform(StreamTransformer.fromBind((messages) async* {
+    await for (final message in messages) {
+      if (message is! EventReceived) continue;
 
-        final event = message.event;
-        if (event is! RawDispatchEvent) {
-          return null;
-        }
+      final event = message.event;
+      if (event is! RawDispatchEvent) continue;
 
-        return parseDispatchEvent(event);
-      }).whereType<DispatchEvent>();
+      final parsedEvent = parseDispatchEvent(event);
+      // Update the cache as needed.
+      client.updateCacheWith(parsedEvent);
+      yield parsedEvent;
+    }
+  })).asBroadcastStream();
 
   bool _closing = false;
 
@@ -88,11 +93,54 @@ class Gateway extends GatewayManager with EventParser {
   /// See [Shard.latency] for details on how the latency is calculated.
   Duration get latency => shards.fold(Duration.zero, (previousValue, element) => previousValue + (element.latency ~/ shards.length));
 
+  final List<Timer> _startTimers = [];
+
   /// Create a new [Gateway].
   Gateway(this.client, this.gatewayBot, this.shards, this.totalShards, this.shardIds) : super.create() {
+    final logger = Logger('${client.options.loggerName}.Gateway');
+
+    // https://discord.com/developers/docs/topics/gateway#rate-limiting
+    const identifyDelay = Duration(seconds: 5);
+    final maxConcurrency = gatewayBot.sessionStartLimit.maxConcurrency;
+    var remainingIdentifyRequests = gatewayBot.sessionStartLimit.remaining;
+
+    // A mapping of rateLimitId (shard.id % maxConcurrency) to Futures that complete when the identify lock for that rate_limit_key is no longer used.
+    final identifyLocks = <int, Future<void>>{};
+
+    // Handle messages from the shards and start them according to their rate limit key.
     for (final shard in shards) {
+      final rateLimitKey = shard.id % maxConcurrency;
+
+      // Delay the shard starting until it is (approximately) also ready to identify.
+      _startTimers.add(Timer(identifyDelay * (shard.id ~/ maxConcurrency), () {
+        logger.fine('Starting shard ${shard.id}');
+        shard.add(StartShard());
+      }));
+
       shard.listen(
-        _messagesController.add,
+        (event) {
+          _messagesController.add(event);
+
+          if (event is RequestingIdentify) {
+            final currentLock = identifyLocks[rateLimitKey] ?? Future.value();
+            identifyLocks[rateLimitKey] = currentLock.then((_) async {
+              if (_closing) return;
+
+              if (remainingIdentifyRequests < client.options.minimumSessionStarts * 5) {
+                logger.warning('$remainingIdentifyRequests session starts remaining');
+              }
+
+              if (remainingIdentifyRequests < client.options.minimumSessionStarts) {
+                await client.close();
+                throw OutOfRemainingSessionsError(gatewayBot);
+              }
+
+              remainingIdentifyRequests--;
+              shard.add(Identify());
+              return await Future.delayed(identifyDelay);
+            });
+          }
+        },
         onError: _messagesController.addError,
         onDone: () async {
           if (_closing) {
@@ -106,9 +154,6 @@ class Gateway extends GatewayManager with EventParser {
         cancelOnError: false,
       );
     }
-
-    // Handle all events which should update cache.
-    events.listen(client.updateCacheWith);
   }
 
   /// Connect to the gateway using the provided [client] and [gatewayBot] configuration.
@@ -125,14 +170,6 @@ class Gateway extends GatewayManager with EventParser {
         'Gateway URL: ${gatewayBot.url}, Recommended Shards: ${gatewayBot.shards}, Max Concurrency: ${gatewayBot.sessionStartLimit.maxConcurrency},'
         ' Remaining Session Starts: ${gatewayBot.sessionStartLimit.remaining}, Reset After: ${gatewayBot.sessionStartLimit.resetAfter}',
       );
-
-    if (gatewayBot.sessionStartLimit.remaining < 50) {
-      logger.warning('${gatewayBot.sessionStartLimit.remaining} session starts remaining');
-    }
-
-    if (gatewayBot.sessionStartLimit.remaining < client.options.minimumSessionStarts) {
-      throw OutOfRemainingSessionsError(gatewayBot);
-    }
 
     assert(
       shardIds.every((element) => element < totalShards),
@@ -154,23 +191,17 @@ class Gateway extends GatewayManager with EventParser {
       'Cannot enable payload compression when using the ETF payload format',
     );
 
-    const identifyDelay = Duration(seconds: 5);
-
-    final shards = shardIds.indexed.map(((int, int) info) {
-      final (index, id) = info;
-
-      return Future.delayed(
-        identifyDelay * (index ~/ gatewayBot.sessionStartLimit.maxConcurrency),
-        () => Shard.connect(id, totalShards, client.apiOptions, gatewayBot.url, client),
-      );
-    });
-
+    final shards = shardIds.map((id) => Shard.connect(id, totalShards, client.apiOptions, gatewayBot.url, client));
     return Gateway(client, gatewayBot, await Future.wait(shards), totalShards, shardIds);
   }
 
   /// Close this [Gateway] instance, disconnecting all shards and closing the event streams.
   Future<void> close() async {
     _closing = true;
+    // Make sure we don't start any shards after we have closed.
+    for (final timer in _startTimers) {
+      timer.cancel();
+    }
     await Future.wait(shards.map((shard) => shard.close()));
     _messagesController.close();
   }
@@ -395,12 +426,15 @@ class Gateway extends GatewayManager with EventParser {
 
   /// Parse a [ThreadDeleteEvent] from [raw].
   ThreadDeleteEvent parseThreadDelete(Map<String, Object?> raw) {
+    final thread = PartialChannel(
+      id: Snowflake.parse(raw['id']!),
+      manager: client.channels,
+    );
+
     return ThreadDeleteEvent(
       gateway: this,
-      thread: PartialChannel(
-        id: Snowflake.parse(raw['id']!),
-        manager: client.channels,
-      ),
+      thread: thread,
+      deletedThread: client.channels.cache[thread.id] as Thread?,
     );
   }
 
@@ -495,10 +529,13 @@ class Gateway extends GatewayManager with EventParser {
 
   /// Parse a [GuildDeleteEvent] from [raw].
   GuildDeleteEvent parseGuildDelete(Map<String, Object?> raw) {
+    final id = Snowflake.parse(raw['id']!);
+
     return GuildDeleteEvent(
       gateway: this,
-      guild: PartialGuild(id: Snowflake.parse(raw['id']!), manager: client.guilds),
-      isUnavailable: raw['unavailable'] as bool,
+      guild: PartialGuild(id: id, manager: client.guilds),
+      isUnavailable: raw['unavailable'] as bool? ?? false,
+      deletedGuild: client.guilds.cache[id],
     );
   }
 
@@ -574,10 +611,14 @@ class Gateway extends GatewayManager with EventParser {
 
   /// Parse a [GuildMemberRemoveEvent] from [raw].
   GuildMemberRemoveEvent parseGuildMemberRemove(Map<String, Object?> raw) {
+    final guildId = Snowflake.parse(raw['guild_id']!);
+    final user = client.users.parse(raw['user'] as Map<String, Object?>);
+
     return GuildMemberRemoveEvent(
       gateway: this,
-      guildId: Snowflake.parse(raw['guild_id']!),
-      user: client.users.parse(raw['user'] as Map<String, Object?>),
+      guildId: guildId,
+      user: user,
+      removedMember: client.guilds[guildId].members.cache[user.id],
     );
   }
 
@@ -636,10 +677,14 @@ class Gateway extends GatewayManager with EventParser {
 
   /// Parse a [GuildRoleDeleteEvent] from [raw].
   GuildRoleDeleteEvent parseGuildRoleDelete(Map<String, Object?> raw) {
+    final roleId = Snowflake.parse(raw['role_id']!);
+    final guildId = Snowflake.parse(raw['guild_id']!);
+
     return GuildRoleDeleteEvent(
       gateway: this,
-      roleId: Snowflake.parse(raw['role_id']!),
-      guildId: Snowflake.parse(raw['guild_id']!),
+      roleId: roleId,
+      guildId: guildId,
+      deletedRole: client.guilds[guildId].roles.cache[roleId],
     );
   }
 
@@ -721,11 +766,15 @@ class Gateway extends GatewayManager with EventParser {
 
   /// Parse an [IntegrationDeleteEvent] from [raw].
   IntegrationDeleteEvent parseIntegrationDelete(Map<String, Object?> raw) {
+    final guildId = Snowflake.parse(raw['guild_id']!);
+    final id = Snowflake.parse(raw['id']!);
+
     return IntegrationDeleteEvent(
       gateway: this,
-      id: Snowflake.parse(raw['id']!),
-      guildId: Snowflake.parse(raw['guild_id']!),
+      id: id,
+      guildId: guildId,
       applicationId: maybeParse(raw['application_id'], Snowflake.parse),
+      deletedIntegration: client.guilds[guildId].integrations.cache[id],
     );
   }
 
@@ -799,20 +848,28 @@ class Gateway extends GatewayManager with EventParser {
 
   /// Parse a [MessageDeleteEvent] from [raw].
   MessageDeleteEvent parseMessageDelete(Map<String, Object?> raw) {
+    final id = Snowflake.parse(raw['id']!);
+    final channelId = Snowflake.parse(raw['channel_id']!);
+
     return MessageDeleteEvent(
       gateway: this,
-      id: Snowflake.parse(raw['id']!),
-      channelId: Snowflake.parse(raw['channel_id']!),
+      id: id,
+      channelId: channelId,
       guildId: maybeParse(raw['guild_id'], Snowflake.parse),
+      deletedMessage: (client.channels[channelId] as PartialTextChannel).messages.cache[id],
     );
   }
 
   /// Parse a [MessageBulkDeleteEvent] from [raw].
   MessageBulkDeleteEvent parseMessageBulkDelete(Map<String, Object?> raw) {
+    final ids = parseMany(raw['ids'] as List<Object?>, Snowflake.parse);
+    final channelId = Snowflake.parse(raw['channel_id']!);
+
     return MessageBulkDeleteEvent(
       gateway: this,
-      ids: parseMany(raw['ids'] as List<Object?>, Snowflake.parse),
-      channelId: Snowflake.parse(raw['channel_id']!),
+      ids: ids,
+      deletedMessages: ids.map((id) => (client.channels[channelId] as PartialTextChannel).messages.cache[id]).nonNulls.toList(),
+      channelId: channelId,
       guildId: maybeParse(raw['guild_id'], Snowflake.parse),
     );
   }
@@ -1011,7 +1068,14 @@ class Gateway extends GatewayManager with EventParser {
 
   /// Parse an [EntitlementDeleteEvent] from [raw].
   EntitlementDeleteEvent parseEntitlementDelete(Map<String, Object?> raw) {
-    return EntitlementDeleteEvent(gateway: this);
+    final applicationId = Snowflake.parse(raw['application_id']!);
+    final entitlement = client.applications[applicationId].entitlements.parse(raw);
+
+    return EntitlementDeleteEvent(
+      gateway: this,
+      entitlement: entitlement,
+      deletedEntitlement: client.applications[applicationId].entitlements.cache[entitlement.id],
+    );
   }
 
   /// Stream all members in a guild that match [query] or [userIds].
