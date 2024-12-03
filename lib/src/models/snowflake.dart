@@ -23,39 +23,39 @@ class Snowflake implements Comparable<Snowflake> {
   static const bulkDeleteLimit = Duration(days: 14);
 
   /// A snowflake with a value of 0.
-  static const zero = Snowflake(0);
+  static final zero = Snowflake(BigInt.zero);
 
   /// The value of this snowflake.
   ///
-  /// While this is stored in a signed [int], Discord treats this as an unsigned value.
-  final int value;
+  /// While this is stored in a signed [BigInt], Discord treats this as an unsigned value.
+  final BigInt value;
 
   /// The time at which this snowflake was created.
-  DateTime get timestamp => epoch.add(Duration(milliseconds: millisecondsSinceEpoch));
+  DateTime get timestamp => epoch.add(Duration(milliseconds: millisecondsSinceEpoch.toInt()));
 
   /// The number of milliseconds since the [epoch].
   ///
   /// Discord uses a non-standard epoch for their snowflakes. As such,
   /// [DateTime.fromMillisecondsSinceEpoch] will not work with this value. Users should instead use
   /// the [timestamp] getter.
-  int get millisecondsSinceEpoch => value >> 22;
+  BigInt get millisecondsSinceEpoch => value >> 22;
 
   /// The internal worker ID for this snowflake.
   ///
   /// {@template internal_field}
   /// This is an internal field and has no practical application.
   /// {@endtemplate}
-  int get workerId => (value & 0x3E0000) >> 17;
+  BigInt get workerId => (value & BigInt.from(0x3E0000)) >> 17;
 
   /// The internal process ID for this snowflake.
   ///
   /// {@macro internal_field}
-  int get processId => (value & 0x1F000) >> 12;
+  BigInt get processId => (value & BigInt.from(0x1F000)) >> 12;
 
   /// The internal increment value for this snowflake.
   ///
   /// {@macro internal_field}
-  int get increment => value & 0xFFF;
+  BigInt get increment => value & BigInt.from(0xFFF);
 
   /// Whether this snowflake has a value of `0`.
   bool get isZero => value == 0;
@@ -75,10 +75,10 @@ class Snowflake implements Comparable<Snowflake> {
   // TODO: This method will fail once snowflakes become larger than 2^63.
   // We need to parse the unsigned [value] into a signed [int].
   factory Snowflake.parse(Object /* String | int */ value) {
-    assert(value is String || value is int);
+    assert(value is String || value is int || value is BigInt);
 
-    if (value is! int) {
-      value = int.parse(value.toString());
+    if (value is! BigInt) {
+      value = BigInt.parse(value.toString());
     }
 
     return Snowflake(value);
@@ -100,7 +100,7 @@ class Snowflake implements Comparable<Snowflake> {
       'Cannot create a Snowflake before the epoch.',
     );
 
-    return Snowflake(dateTime.difference(epoch).inMilliseconds << 22);
+    return Snowflake(BigInt.from(dateTime.difference(epoch).inMilliseconds) << 22);
   }
 
   /// Create a snowflake representing the oldest time at which bulk delete operations will work.

@@ -69,7 +69,7 @@ class EntitlementManager extends ReadOnlyManager<Entitlement> {
 
   @override
   Future<Entitlement> fetch(Snowflake id) async {
-    final entitlements = await list(before: Snowflake(id.value + 1));
+    final entitlements = await list(before: Snowflake(id.value + BigInt.one));
 
     return entitlements.firstWhere(
       (entitlement) => entitlement.id == id,

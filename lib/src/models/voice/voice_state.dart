@@ -82,7 +82,7 @@ class VoiceState with ToStringHelper {
 
   /// The key this voice state will have in the [NyxxRest.voice] cache.
   @Deprecated('Use PartialGuild.voiceStates instead')
-  Snowflake get cacheKey => Snowflake(Object.hash(guildId, userId));
+  Snowflake get cacheKey => Snowflake(BigInt.from(Object.hash(guildId, userId)));
 
   /// The guild this voice state is in.
   PartialGuild? get guild => guildId == null ? null : manager.client.guilds[guildId!];
