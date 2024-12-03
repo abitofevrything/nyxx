@@ -18,6 +18,7 @@ import 'package:nyxx/src/models/channel/guild_channel.dart';
 import 'package:nyxx/src/models/channel/text_channel.dart';
 import 'package:nyxx/src/models/channel/thread.dart';
 import 'package:nyxx/src/models/gateway/events/entitlement.dart';
+import 'package:nyxx/src/models/gateway/events/soundboard.dart';
 import 'package:nyxx/src/models/gateway/gateway.dart';
 import 'package:nyxx/src/models/gateway/event.dart';
 import 'package:nyxx/src/models/gateway/events/application_command.dart';
@@ -93,7 +94,7 @@ class Gateway extends GatewayManager with EventParser {
   /// See [Shard.latency] for details on how the latency is calculated.
   Duration get latency => shards.fold(Duration.zero, (previousValue, element) => previousValue + (element.latency ~/ shards.length));
 
-  final List<Timer> _startTimers = [];
+  final Set<Timer> _startOrIdentifyTimers = {};
 
   /// Create a new [Gateway].
   Gateway(this.client, this.gatewayBot, this.shards, this.totalShards, this.shardIds) : super.create() {
@@ -112,10 +113,15 @@ class Gateway extends GatewayManager with EventParser {
       final rateLimitKey = shard.id % maxConcurrency;
 
       // Delay the shard starting until it is (approximately) also ready to identify.
-      _startTimers.add(Timer(identifyDelay * (shard.id ~/ maxConcurrency), () {
+      // This avoids opening many websocket connections simultaneously just to have most
+      // of them wait for their identify request.
+      late final Timer startTimer;
+      startTimer = Timer(identifyDelay * (shard.id ~/ maxConcurrency), () {
         logger.fine('Starting shard ${shard.id}');
         shard.add(StartShard());
-      }));
+        _startOrIdentifyTimers.remove(startTimer);
+      });
+      _startOrIdentifyTimers.add(startTimer);
 
       shard.listen(
         (event) {
@@ -137,7 +143,15 @@ class Gateway extends GatewayManager with EventParser {
 
               remainingIdentifyRequests--;
               shard.add(Identify());
-              return await Future.delayed(identifyDelay);
+
+              // Don't use Future.delayed so that we can exit early if close() is called.
+              // If we use Future.delayed, the program will remain alive until it is complete, even if nothing is waiting on it.
+              // This code is roughly equivalent to `await Future.delayed(identifyDelay)`
+              final delayCompleter = Completer<void>();
+              final delayTimer = Timer(identifyDelay, delayCompleter.complete);
+              _startOrIdentifyTimers.add(delayTimer);
+              await delayCompleter.future;
+              _startOrIdentifyTimers.remove(delayTimer);
             });
           }
         },
@@ -199,7 +213,7 @@ class Gateway extends GatewayManager with EventParser {
   Future<void> close() async {
     _closing = true;
     // Make sure we don't start any shards after we have closed.
-    for (final timer in _startTimers) {
+    for (final timer in _startOrIdentifyTimers) {
       timer.cancel();
     }
     await Future.wait(shards.map((shard) => shard.close()));
@@ -271,6 +285,7 @@ class Gateway extends GatewayManager with EventParser {
       'PRESENCE_UPDATE': parsePresenceUpdate,
       'TYPING_START': parseTypingStart,
       'USER_UPDATE': parseUserUpdate,
+      'VOICE_CHANNEL_EFFECT_SEND': parseVoiceChannelEffectSend,
       'VOICE_STATE_UPDATE': parseVoiceStateUpdate,
       'VOICE_SERVER_UPDATE': parseVoiceServerUpdate,
       'WEBHOOKS_UPDATE': parseWebhooksUpdate,
@@ -281,6 +296,12 @@ class Gateway extends GatewayManager with EventParser {
       'ENTITLEMENT_CREATE': parseEntitlementCreate,
       'ENTITLEMENT_UPDATE': parseEntitlementUpdate,
       'ENTITLEMENT_DELETE': parseEntitlementDelete,
+      'MESSAGE_POLL_VOTE_ADD': parseMessagePollVoteAdd,
+      'MESSAGE_POLL_VOTE_REMOVE': parseMessagePollVoteRemove,
+      'GUILD_SOUNDBOARD_SOUND_CREATE': parseSoundboardSoundCreate,
+      'GUILD_SOUNDBOARD_SOUND_UPDATE': parseSoundboardSoundUpdate,
+      'GUILD_SOUNDBOARD_SOUND_DELETE': parseSoundboardSoundDelete,
+      'GUILD_SOUNDBOARD_SOUNDS_UPDATE': parseSoundboardSoundsUpdate,
     };
 
     return mapping[raw.name]?.call(raw.payload) ?? UnknownDispatchEvent(gateway: this, raw: raw);
@@ -367,7 +388,7 @@ class Gateway extends GatewayManager with EventParser {
       guildId: guildId,
       action: client.guilds[guildId].autoModerationRules.parseAutoModerationAction(raw['action'] as Map<String, Object?>),
       ruleId: Snowflake.parse(raw['rule_id']!),
-      triggerType: TriggerType.parse(raw['rule_trigger_type'] as int),
+      triggerType: TriggerType(raw['rule_trigger_type'] as int),
       userId: Snowflake.parse(raw['user_id']!),
       channelId: maybeParse(raw['channel_id'], Snowflake.parse),
       messageId: maybeParse(raw['message_id'], Snowflake.parse),
@@ -936,7 +957,7 @@ class Gateway extends GatewayManager with EventParser {
         (Map<String, Object?> raw) => PartialUser(id: Snowflake.parse(raw['id']!), manager: client.users),
       ),
       guildId: maybeParse(raw['guild_id'], Snowflake.parse),
-      status: maybeParse(raw['status'], UserStatus.parse),
+      status: maybeParse(raw['status'], UserStatus.new),
       activities: maybeParseMany(raw['activities'], parseActivity),
       clientStatus: maybeParse(raw['client_status'], parseClientStatus),
     );
@@ -966,6 +987,23 @@ class Gateway extends GatewayManager with EventParser {
       gateway: this,
       oldUser: client.users.cache[user.id],
       user: user,
+    );
+  }
+
+  /// Parse a [VoiceChannelEffectSendEvent] from [raw].
+  VoiceChannelEffectSendEvent parseVoiceChannelEffectSend(Map<String, Object?> raw) {
+    final guildId = Snowflake.parse(raw['guild_id']!);
+
+    return VoiceChannelEffectSendEvent(
+      gateway: this,
+      channelId: Snowflake.parse(raw['channel_id']!),
+      guildId: guildId,
+      userId: Snowflake.parse(raw['user_id']!),
+      emoji: maybeParse(raw['emoji'], client.guilds[guildId].emojis.parse),
+      animationType: maybeParse(raw['animation_type'], AnimationType.new),
+      animationId: raw['animation_id'] as int?,
+      soundId: maybeParse(raw['sound_id'], Snowflake.parse),
+      soundVolume: raw['sound_volume'] as double?,
     );
   }
 
@@ -1014,6 +1052,7 @@ class Gateway extends GatewayManager with EventParser {
       InteractionType.modalSubmit => InteractionCreateEvent<ModalSubmitInteraction>(gateway: this, interaction: interaction as ModalSubmitInteraction),
       InteractionType.applicationCommandAutocomplete =>
         InteractionCreateEvent<ApplicationCommandAutocompleteInteraction>(gateway: this, interaction: interaction as ApplicationCommandAutocompleteInteraction),
+      InteractionType() => throw StateError('Unknown interaction type: ${interaction.type}'),
     } as InteractionCreateEvent<Interaction<dynamic>>;
   }
 
@@ -1078,6 +1117,30 @@ class Gateway extends GatewayManager with EventParser {
     );
   }
 
+  /// Parse an [MessagePollVoteAddEvent] from [raw].
+  MessagePollVoteAddEvent parseMessagePollVoteAdd(Map<String, Object?> raw) {
+    return MessagePollVoteAddEvent(
+      gateway: this,
+      userId: Snowflake.parse(raw['user_id']!),
+      channelId: Snowflake.parse(raw['channel_id']!),
+      messageId: Snowflake.parse(raw['message_id']!),
+      guildId: maybeParse(raw['guild_id'], Snowflake.parse),
+      answerId: raw['answer_id'] as int,
+    );
+  }
+
+  /// Parse an [MessagePollVoteRemoveEvent] from [raw].
+  MessagePollVoteRemoveEvent parseMessagePollVoteRemove(Map<String, Object?> raw) {
+    return MessagePollVoteRemoveEvent(
+      gateway: this,
+      userId: Snowflake.parse(raw['user_id']!),
+      channelId: Snowflake.parse(raw['channel_id']!),
+      messageId: Snowflake.parse(raw['message_id']!),
+      guildId: maybeParse(raw['guild_id'], Snowflake.parse),
+      answerId: raw['answer_id'] as int,
+    );
+  }
+
   /// Stream all members in a guild that match [query] or [userIds].
   ///
   /// If neither is provided, all members in the guild are returned.
@@ -1120,6 +1183,52 @@ class Gateway extends GatewayManager with EventParser {
         break;
       }
     }
+  }
+
+  SoundboardSoundCreateEvent parseSoundboardSoundCreate(Map<String, Object?> raw) {
+    final guildId = maybeParse(raw['guild_id'], Snowflake.parse);
+
+    return SoundboardSoundCreateEvent(
+      gateway: this,
+      sound: client.guilds[guildId ?? Snowflake.zero].soundboard.parse(raw),
+    );
+  }
+
+  SoundboardSoundUpdateEvent parseSoundboardSoundUpdate(Map<String, Object?> raw) {
+    final guildId = maybeParse(raw['guild_id'], Snowflake.parse);
+
+    return SoundboardSoundUpdateEvent(
+      gateway: this,
+      oldSound: client.guilds[guildId ?? Snowflake.zero].soundboard.cache[Snowflake.parse(raw['sound_id']!)],
+      sound: client.guilds[guildId ?? Snowflake.zero].soundboard.parse(raw),
+    );
+  }
+
+  SoundboardSoundDeleteEvent parseSoundboardSoundDelete(Map<String, Object?> raw) {
+    final guildId = Snowflake.parse(raw['guild_id']!);
+    final soundId = Snowflake.parse(raw['sound_id']!);
+
+    return SoundboardSoundDeleteEvent(
+      gateway: this,
+      sound: client.guilds[guildId].soundboard.cache[soundId],
+      guildId: guildId,
+      soundId: soundId,
+    );
+  }
+
+  SoundboardSoundsUpdateEvent parseSoundboardSoundsUpdate(Map<String, Object?> raw) {
+    final guildId = Snowflake.parse(raw['guild_id']!);
+
+    final sounds = parseMany(raw['sounds'] as List<Object?>, client.guilds[guildId].soundboard.parse);
+
+    final oldSounds = sounds.map((sound) => client.guilds[guildId].soundboard.cache[sound.id]).toList();
+
+    return SoundboardSoundsUpdateEvent(
+      gateway: this,
+      guildId: guildId,
+      sounds: sounds,
+      oldSounds: oldSounds,
+    );
   }
 
   /// Update the client's voice state in the guild with ID [guildId].

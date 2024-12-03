@@ -26,11 +26,12 @@ class InviteManager {
     );
 
     return Invite(
+      type: InviteType(raw['type'] as int),
       code: raw['code'] as String,
       guild: guild,
       channel: PartialChannel(id: Snowflake.parse((raw['channel'] as Map<String, Object?>)['id']!), manager: client.channels),
       inviter: maybeParse(raw['inviter'], client.users.parse),
-      targetType: maybeParse(raw['target_type'], TargetType.parse),
+      targetType: maybeParse(raw['target_type'], TargetType.new),
       targetUser: maybeParse(raw['target_user'], client.users.parse),
       targetApplication: maybeParse(
         raw['target_application'],
@@ -49,6 +50,7 @@ class InviteManager {
     final invite = parse(raw);
 
     return InviteWithMetadata(
+      type: invite.type,
       code: invite.code,
       guild: invite.guild,
       channel: invite.channel,

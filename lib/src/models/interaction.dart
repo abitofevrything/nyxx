@@ -4,6 +4,7 @@ import 'package:nyxx/src/builders/interaction_response.dart';
 import 'package:nyxx/src/builders/message/message.dart';
 import 'package:nyxx/src/errors.dart';
 import 'package:nyxx/src/http/managers/interaction_manager.dart';
+import 'package:nyxx/src/models/application.dart';
 import 'package:nyxx/src/models/channel/channel.dart';
 import 'package:nyxx/src/models/commands/application_command.dart';
 import 'package:nyxx/src/models/commands/application_command_option.dart';
@@ -18,7 +19,29 @@ import 'package:nyxx/src/models/permissions.dart';
 import 'package:nyxx/src/models/role.dart';
 import 'package:nyxx/src/models/snowflake.dart';
 import 'package:nyxx/src/models/user/user.dart';
+import 'package:nyxx/src/utils/enum_like.dart';
 import 'package:nyxx/src/utils/to_string_helper/to_string_helper.dart';
+
+/// A context indicating whether command can be used in DMs, groups, or guilds.
+///
+/// External references:
+/// * Discord API Reference: https://discord.com/developers/docs/interactions/receiving-and-responding#interaction-object-interaction-context-types
+final class InteractionContextType extends EnumLike<int, InteractionContextType> {
+  /// Interaction can be used within servers.
+  static const InteractionContextType guild = InteractionContextType(0);
+
+  /// Interaction can be used within DMs with the app's bot user.
+  static const InteractionContextType botDm = InteractionContextType(1);
+
+  /// Interaction can be used within Group DMs and DMs other than the app's bot user.
+  static const InteractionContextType privateChannel = InteractionContextType(2);
+
+  /// @nodoc
+  const InteractionContextType(super.value);
+
+  @Deprecated('The .parse() constructor is deprecated. Use the unnamed constructor instead.')
+  InteractionContextType.parse(int value) : this(value);
+}
 
 /// {@template interaction}
 /// An interaction sent by Discord when a user interacts with an [ApplicationCommand], a [MessageComponent]
@@ -65,7 +88,7 @@ abstract class Interaction<T> with ToStringHelper {
   final Message? message;
 
   /// The permissions of the application that triggered this interaction.
-  final Permissions? appPermissions;
+  final Permissions appPermissions;
 
   /// The preferred locale of the user that triggered this interaction.
   final Locale? locale;
@@ -75,6 +98,12 @@ abstract class Interaction<T> with ToStringHelper {
 
   /// The entitlements for the user and guild of this interaction.
   final List<Entitlement> entitlements;
+
+  /// Mapping of installation contexts that the interaction was authorized for to related user or guild IDs.
+  final Map<ApplicationIntegrationType, Snowflake>? authorizingIntegrationOwners;
+
+  /// Context where the interaction was triggered from.
+  final InteractionContextType? context;
 
   /// {@macro interaction}
   /// @nodoc
@@ -96,6 +125,8 @@ abstract class Interaction<T> with ToStringHelper {
     required this.locale,
     required this.guildLocale,
     required this.entitlements,
+    required this.authorizingIntegrationOwners,
+    required this.context,
   });
 
   /// The guild in which this interaction was triggered.
@@ -200,6 +231,8 @@ class PingInteraction extends Interaction<void> {
     required super.locale,
     required super.guildLocale,
     required super.entitlements,
+    required super.authorizingIntegrationOwners,
+    required super.context,
   }) : super(data: null);
 
   /// Send a pong response to this interaction.
@@ -231,6 +264,8 @@ class ApplicationCommandInteraction extends Interaction<ApplicationCommandIntera
     required super.locale,
     required super.guildLocale,
     required super.entitlements,
+    required super.authorizingIntegrationOwners,
+    required super.context,
   });
 }
 
@@ -259,6 +294,8 @@ class MessageComponentInteraction extends Interaction<MessageComponentInteractio
     required super.locale,
     required super.guildLocale,
     required super.entitlements,
+    required super.authorizingIntegrationOwners,
+    required super.context,
   });
 
   bool? _didUpdateMessage;
@@ -342,6 +379,8 @@ class ModalSubmitInteraction extends Interaction<ModalSubmitInteractionData> wit
     required super.locale,
     required super.guildLocale,
     required super.entitlements,
+    required super.authorizingIntegrationOwners,
+    required super.context,
   });
 }
 
@@ -369,6 +408,8 @@ class ApplicationCommandAutocompleteInteraction extends Interaction<ApplicationC
     required super.locale,
     required super.guildLocale,
     required super.entitlements,
+    required super.authorizingIntegrationOwners,
+    required super.context,
   });
 
   /// Send a response to this interaction.
@@ -377,28 +418,18 @@ class ApplicationCommandAutocompleteInteraction extends Interaction<ApplicationC
 }
 
 /// The type of an interaction.
-enum InteractionType {
-  ping._(1),
-  applicationCommand._(2),
-  messageComponent._(3),
-  applicationCommandAutocomplete._(4),
-  modalSubmit._(5);
+final class InteractionType extends EnumLike<int, InteractionType> {
+  static const ping = InteractionType(1);
+  static const applicationCommand = InteractionType(2);
+  static const messageComponent = InteractionType(3);
+  static const applicationCommandAutocomplete = InteractionType(4);
+  static const modalSubmit = InteractionType(5);
 
-  /// The value of this [InteractionType].
-  final int value;
+  /// @nodoc
+  const InteractionType(super.value);
 
-  const InteractionType._(this.value);
-
-  /// Parse an [InteractionType] from an [int].
-  ///
-  /// The [value] must be a valid interaction type.
-  factory InteractionType.parse(int value) => InteractionType.values.firstWhere(
-        (type) => type.value == value,
-        orElse: () => throw FormatException('Unknown interaction type', value),
-      );
-
-  @override
-  String toString() => 'InteractionType($value)';
+  @Deprecated('The .parse() constructor is deprecated. Use the unnamed constructor instead.')
+  InteractionType.parse(int value) : this(value);
 }
 
 /// {@template application_command_interaction_data}

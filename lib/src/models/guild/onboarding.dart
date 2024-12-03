@@ -3,6 +3,7 @@ import 'package:nyxx/src/models/channel/channel.dart';
 import 'package:nyxx/src/models/emoji.dart';
 import 'package:nyxx/src/models/guild/guild.dart';
 import 'package:nyxx/src/models/snowflake.dart';
+import 'package:nyxx/src/utils/enum_like.dart';
 import 'package:nyxx/src/utils/to_string_helper/to_string_helper.dart';
 
 /// {@template onboarding}
@@ -24,6 +25,9 @@ class Onboarding with ToStringHelper {
   /// Whether onboarding is enabled for this guild.
   final bool isEnabled;
 
+  /// The current onboarding mode.
+  final OnboardingMode mode;
+
   /// {@macro onboarding}
   /// @nodoc
   Onboarding({
@@ -32,6 +36,7 @@ class Onboarding with ToStringHelper {
     required this.prompts,
     required this.defaultChannelIds,
     required this.isEnabled,
+    required this.mode,
   });
 
   /// The guild this onboarding is for.
@@ -82,25 +87,15 @@ class OnboardingPrompt with ToStringHelper {
 }
 
 /// The type of an [Onboarding] prompt.
-enum OnboardingPromptType {
-  multipleChoice._(0),
-  dropdown._(1);
+final class OnboardingPromptType extends EnumLike<int, OnboardingPromptType> {
+  static const multipleChoice = OnboardingPromptType(0);
+  static const dropdown = OnboardingPromptType(1);
 
-  /// The value of this [OnboardingPromptType].
-  final int value;
+  /// @nodoc
+  const OnboardingPromptType(super.value);
 
-  const OnboardingPromptType._(this.value);
-
-  /// Parse an [OnboardingPromptType] from an [int].
-  ///
-  /// The [value] must be a valid onboarding prompt type.
-  factory OnboardingPromptType.parse(int value) => OnboardingPromptType.values.firstWhere(
-        (type) => type.value == value,
-        orElse: () => throw FormatException('Unknown onboarding prompt type', value),
-      );
-
-  @override
-  String toString() => 'OnboardingPromptType($value)';
+  @Deprecated('The .parse() constructor is deprecated. Use the unnamed constructor instead.')
+  OnboardingPromptType.parse(int value) : this(value);
 }
 
 /// {@template onboarding_prompt_option}
@@ -120,6 +115,9 @@ class OnboardingPromptOption with ToStringHelper {
   final List<Snowflake> roleIds;
 
   /// The emoji associated with this onboarding prompt.
+  // The `emoji_id`, `emoji_name`, and `emoji_animated` fields never seem to be
+  // included in this structure when it is returned from the API. Since the
+  // `emoji` object contains this information anyway, we don't include them.
   final Emoji? emoji;
 
   /// The title of this option.
@@ -142,4 +140,20 @@ class OnboardingPromptOption with ToStringHelper {
 
   /// The channels the user is granted access to.
   List<PartialChannel> get channels => channelIds.map((e) => manager.client.channels[e]).toList();
+}
+
+/// The mode under which onboarding constraints operate when creating an
+/// [Onboarding].
+///
+/// These constraints are that there must be at least 7 Default Channels and
+/// at least 5 of them must allow sending messages to the @everyone role.
+final class OnboardingMode extends EnumLike<int, OnboardingMode> {
+  /// Only default channels count towards the constraints.
+  static const defaultMode = OnboardingMode(0);
+
+  /// Both default channels and questions count towards the constraints,
+  static const advanced = OnboardingMode(1);
+
+  /// @nodoc
+  const OnboardingMode(super.value);
 }

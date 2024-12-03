@@ -46,7 +46,7 @@ class ChannelManager extends ReadOnlyManager<Channel> {
 
   /// Create a new [ChannelManager].
   ChannelManager(super.config, super.client, {required CacheConfig<StageInstance> stageInstanceConfig})
-      : stageInstanceCache = Cache(client, 'channels.stageInstances', stageInstanceConfig),
+      : stageInstanceCache = client.cache.getCache('channels.stageInstances', stageInstanceConfig),
         super(identifier: 'channels');
 
   /// Return a partial instance of the entity with ID [id] containing no data.
@@ -64,7 +64,7 @@ class ChannelManager extends ReadOnlyManager<Channel> {
 
   @override
   Channel parse(Map<String, Object?> raw, {Snowflake? guildId}) {
-    final type = ChannelType.parse(raw['type'] as int);
+    final type = ChannelType(raw['type'] as int);
 
     final parsers = {
       ChannelType.guildText: parseGuildTextChannel,
@@ -139,7 +139,7 @@ class ChannelManager extends ReadOnlyManager<Channel> {
       rateLimitPerUser: maybeParse<Duration?, int>(raw['rate_limit_per_user'], (value) => value == 0 ? null : Duration(seconds: value)),
       rtcRegion: raw['rtc_region'] as String?,
       userLimit: raw['user_limit'] == 0 ? null : raw['user_limit'] as int?,
-      videoQualityMode: maybeParse(raw['video_quality_mode'], VideoQualityMode.parse) ?? VideoQualityMode.auto,
+      videoQualityMode: maybeParse(raw['video_quality_mode'], VideoQualityMode.new) ?? VideoQualityMode.auto,
     );
   }
 
@@ -305,7 +305,7 @@ class ChannelManager extends ReadOnlyManager<Channel> {
       rateLimitPerUser: maybeParse<Duration?, int>(raw['rate_limit_per_user'], (value) => value == 0 ? null : Duration(seconds: value)),
       rtcRegion: raw['rtc_region'] as String?,
       userLimit: raw['user_limit'] == 0 ? null : raw['user_limit'] as int?,
-      videoQualityMode: maybeParse(raw['video_quality_mode'], VideoQualityMode.parse) ?? VideoQualityMode.auto,
+      videoQualityMode: maybeParse(raw['video_quality_mode'], VideoQualityMode.new) ?? VideoQualityMode.auto,
     );
   }
 
@@ -324,7 +324,7 @@ class ChannelManager extends ReadOnlyManager<Channel> {
     return ForumChannel(
       id: Snowflake.parse(raw['id']!),
       manager: this,
-      defaultLayout: maybeParse(raw['default_forum_layout'], ForumLayout.parse),
+      defaultLayout: maybeParse(raw['default_forum_layout'], ForumLayout.new),
       topic: raw['topic'] as String?,
       rateLimitPerUser: maybeParse<Duration?, int>(raw['rate_limit_per_user'], (value) => value == 0 ? null : Duration(seconds: value)),
       lastThreadId: maybeParse(raw['last_message_id'], Snowflake.parse),
@@ -332,7 +332,7 @@ class ChannelManager extends ReadOnlyManager<Channel> {
       flags: ChannelFlags(raw['flags'] as int),
       availableTags: parseMany(raw['available_tags'] as List, parseForumTag),
       defaultReaction: maybeParse(raw['default_reaction_emoji'], parseDefaultReaction),
-      defaultSortOrder: maybeParse(raw['default_sort_order'], ForumSort.parse),
+      defaultSortOrder: maybeParse(raw['default_sort_order'], ForumSort.new),
       // Discord doesn't seem to include this field if the default 3 day expiration is used (3 days = 4320 minutes)
       defaultAutoArchiveDuration: Duration(minutes: raw['default_auto_archive_duration'] as int? ?? 4320),
       defaultThreadRateLimitPerUser:
@@ -359,7 +359,7 @@ class ChannelManager extends ReadOnlyManager<Channel> {
       flags: ChannelFlags(raw['flags'] as int),
       availableTags: parseMany(raw['available_tags'] as List, parseForumTag),
       defaultReaction: maybeParse(raw['default_reaction_emoji'], parseDefaultReaction),
-      defaultSortOrder: maybeParse(raw['default_sort_order'], ForumSort.parse),
+      defaultSortOrder: maybeParse(raw['default_sort_order'], ForumSort.new),
       // Discord doesn't seem to include this field if the default 3 day expiration is used (3 days = 4320 minutes)
       defaultAutoArchiveDuration: Duration(minutes: raw['default_auto_archive_duration'] as int? ?? 4320),
       defaultThreadRateLimitPerUser:
@@ -376,7 +376,7 @@ class ChannelManager extends ReadOnlyManager<Channel> {
   PermissionOverwrite parsePermissionOverwrite(Map<String, Object?> raw) {
     return PermissionOverwrite(
       id: Snowflake.parse(raw['id']!),
-      type: PermissionOverwriteType.parse(raw['type'] as int),
+      type: PermissionOverwriteType(raw['type'] as int),
       allow: Permissions(int.parse(raw['allow'] as String)),
       deny: Permissions(int.parse(raw['deny'] as String)),
     );
@@ -436,7 +436,7 @@ class ChannelManager extends ReadOnlyManager<Channel> {
       guildId: Snowflake.parse(raw['guild_id']!),
       channelId: Snowflake.parse(raw['channel_id']!),
       topic: raw['topic'] as String,
-      privacyLevel: PrivacyLevel.parse(raw['privacy_level'] as int),
+      privacyLevel: PrivacyLevel(raw['privacy_level'] as int),
       scheduledEventId: maybeParse(raw['guild_scheduled_event_id'], Snowflake.parse),
     );
   }
@@ -535,11 +535,16 @@ class ChannelManager extends ReadOnlyManager<Channel> {
   }
 
   /// Add a channel to another channel's followers.
-  Future<FollowedChannel> followChannel(Snowflake id, Snowflake toFollow) async {
+  Future<FollowedChannel> followChannel(Snowflake id, Snowflake toFollow, {String? auditLogReason}) async {
     final route = HttpRoute()
       ..channels(id: toFollow.toString())
       ..followers();
-    final request = BasicRequest(route, method: 'POST', body: jsonEncode({'webhook_channel_id': id.toString()}));
+    final request = BasicRequest(
+      route,
+      method: 'POST',
+      body: jsonEncode({'webhook_channel_id': id.toString()}),
+      auditLogReason: auditLogReason,
+    );
 
     final response = await client.httpHandler.executeSafe(request);
 
@@ -749,6 +754,7 @@ class ChannelManager extends ReadOnlyManager<Channel> {
   }
 
   /// List the private archived threads the current user has joined in a channel.
+  // TODO(lexedia): for nyxx v7, this needs to be updated to use `Snowflake` instead of `DateTime`.
   Future<ThreadList> listJoinedPrivateArchivedThreads(Snowflake id, {DateTime? before, int? limit}) async {
     final route = HttpRoute()
       ..channels(id: id.toString())
@@ -759,7 +765,7 @@ class ChannelManager extends ReadOnlyManager<Channel> {
     final request = BasicRequest(
       route,
       queryParameters: {
-        if (before != null) 'before': before.toIso8601String(),
+        if (before != null) 'before': Snowflake.fromDateTime(before).toString(),
         if (limit != null) 'limit': limit.toString(),
       },
     );

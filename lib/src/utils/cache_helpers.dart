@@ -21,6 +21,7 @@ import 'package:nyxx/src/models/gateway/events/invite.dart';
 import 'package:nyxx/src/models/gateway/events/message.dart';
 import 'package:nyxx/src/models/gateway/events/presence.dart';
 import 'package:nyxx/src/models/gateway/events/ready.dart';
+import 'package:nyxx/src/models/gateway/events/soundboard.dart';
 import 'package:nyxx/src/models/gateway/events/stage_instance.dart';
 import 'package:nyxx/src/models/gateway/events/voice.dart';
 import 'package:nyxx/src/models/gateway/events/webhook.dart';
@@ -38,9 +39,12 @@ import 'package:nyxx/src/models/invite/invite.dart';
 import 'package:nyxx/src/models/message/message.dart';
 import 'package:nyxx/src/models/presence.dart';
 import 'package:nyxx/src/models/role.dart';
+import 'package:nyxx/src/models/soundboard/soundboard.dart';
 import 'package:nyxx/src/models/sticker/global_sticker.dart';
 import 'package:nyxx/src/models/sticker/guild_sticker.dart';
 import 'package:nyxx/src/models/sticker/sticker_pack.dart';
+import 'package:nyxx/src/models/sku.dart';
+import 'package:nyxx/src/models/subscription.dart';
 import 'package:nyxx/src/models/user/user.dart';
 import 'package:nyxx/src/models/voice/voice_state.dart';
 import 'package:nyxx/src/models/webhook.dart';
@@ -86,6 +90,10 @@ extension CacheUpdates on NyxxRest {
             if (entity case GuildEmoji(:final user?)) {
               updateCacheWith(user);
             }
+
+            if (entity case ApplicationEmoji(:final user)) {
+              updateCacheWith(user);
+            }
           }(),
         Guild() => () {
             entity.manager.cache[entity.id] = entity;
@@ -105,7 +113,7 @@ extension CacheUpdates on NyxxRest {
             updateCacheWith(entity.author);
             entity.mentions.forEach(updateCacheWith);
             updateCacheWith(entity.referencedMessage);
-            updateCacheWith(entity.interaction);
+            updateCacheWith(entity.interaction); // ignore: deprecated_member_use_from_same_package
             updateCacheWith(entity.thread);
             updateCacheWith(entity.resolved);
           }(),
@@ -121,6 +129,8 @@ extension CacheUpdates on NyxxRest {
 
             updateCacheWith(entity.user);
           }(),
+        Sku() => entity.manager.cache[entity.id] = entity,
+        Subscription() => entity.manager.cache[entity.id] = entity,
 
         // "Aggregate" types - objects that contain other (potentially root) objects
 
@@ -129,6 +139,7 @@ extension CacheUpdates on NyxxRest {
             members.forEach(updateCacheWith);
           }(),
         ThreadMember(:final member) => updateCacheWith(member),
+        // ignore: deprecated_member_use_from_same_package
         MessageInteraction(:final user) => updateCacheWith(user),
         ResolvedData(:final users, :final roles, :final members) => () {
             users?.values.forEach(updateCacheWith);
@@ -279,6 +290,17 @@ extension CacheUpdates on NyxxRest {
         EntitlementCreateEvent(:final entitlement) => updateCacheWith(entitlement),
         EntitlementUpdateEvent(:final entitlement) => updateCacheWith(entitlement),
         EntitlementDeleteEvent(:final entitlement) => entitlement.manager.cache.remove(entitlement.id),
+        SoundboardSound() => () {
+            updateCacheWith(entity.user);
+            entity.manager.cache[entity.id] = entity;
+          }(),
+        VoiceChannelEffectSendEvent() => null,
+        SoundboardSoundCreateEvent(:final sound) => updateCacheWith(sound),
+        SoundboardSoundUpdateEvent(:final sound) => updateCacheWith(sound),
+        SoundboardSoundDeleteEvent(:final sound?) => sound.manager.cache.remove(sound.id),
+        SoundboardSoundsUpdateEvent(:final sounds) => sounds.forEach(updateCacheWith),
+        MessagePollVoteAddEvent() => null,
+        MessagePollVoteRemoveEvent() => null,
 
         // null and unhandled entity types
         WebhookAuthor() => null,

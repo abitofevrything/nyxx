@@ -67,7 +67,9 @@ class Logging extends NyxxPlugin {
     StringSink? stdout,
     StringSink? stderr,
   })  : stdout = stdout ?? _CallbackStringSink(print),
-        stderr = stderr ?? _CallbackStringSink(print);
+        stderr = stderr ?? _CallbackStringSink(print) {
+    _listenIfNeeded();
+  }
 
   static int _clients = 0;
 
@@ -147,7 +149,6 @@ class Logging extends NyxxPlugin {
     }
 
     _clients++;
-    _listenIfNeeded();
   }
 
   @override

@@ -61,7 +61,15 @@ class ApplicationManager {
       tags: maybeParseMany(raw['tags']),
       installationParameters: maybeParse(raw['install_params'], parseInstallationParameters),
       customInstallUrl: maybeParse(raw['custom_install_url'], Uri.parse),
+      integrationTypesConfig: maybeParse(
+        raw['integration_types_config'],
+        (Map<String, Object?> config) => {
+          for (final MapEntry(:key, :value) in config.entries)
+            ApplicationIntegrationType(int.parse(key)): parseApplicationIntegrationTypeConfiguration(value as Map<String, Object?>)
+        },
+      ),
       roleConnectionsVerificationUrl: maybeParse(raw['role_connections_verification_url'], Uri.parse),
+      approximateUserInstallCount: raw['approximate_user_install_count'] as int?,
     );
   }
 
@@ -80,7 +88,7 @@ class ApplicationManager {
   /// Parse a [TeamMember] from [raw].
   TeamMember parseTeamMember(Map<String, Object?> raw) {
     return TeamMember(
-      membershipState: TeamMembershipState.parse(raw['membership_state'] as int),
+      membershipState: TeamMembershipState(raw['membership_state'] as int),
       teamId: Snowflake.parse(raw['team_id']!),
       user: PartialUser(id: Snowflake.parse((raw['user'] as Map<String, Object?>)['id']!), manager: client.users),
       role: TeamMemberRole.parse(raw['role'] as String),
@@ -95,10 +103,17 @@ class ApplicationManager {
     );
   }
 
+  /// Parse a [ApplicationIntegrationTypeConfiguration] from [raw].
+  ApplicationIntegrationTypeConfiguration parseApplicationIntegrationTypeConfiguration(Map<String, Object?> raw) {
+    return ApplicationIntegrationTypeConfiguration(
+      oauth2InstallParameters: maybeParse(raw['oauth2_install_params'], parseInstallationParameters),
+    );
+  }
+
   /// Parse a [ApplicationRoleConnectionMetadata] from [raw].
   ApplicationRoleConnectionMetadata parseApplicationRoleConnectionMetadata(Map<String, Object?> raw) {
     return ApplicationRoleConnectionMetadata(
-      type: ConnectionMetadataType.parse(raw['type'] as int),
+      type: ConnectionMetadataType(raw['type'] as int),
       key: raw['key'] as String,
       name: raw['name'] as String,
       localizedNames: maybeParse(
@@ -114,16 +129,11 @@ class ApplicationManager {
   }
 
   /// Parse a [Sku] from [raw].
+  @Deprecated('Use SkuManager.parse')
   Sku parseSku(Map<String, Object?> raw) {
-    return Sku(
-      manager: this,
-      id: Snowflake.parse(raw['id']!),
-      type: SkuType.parse(raw['type'] as int),
-      applicationId: Snowflake.parse(raw['application_id']!),
-      name: raw['name'] as String,
-      slug: raw['slug'] as String,
-      flags: SkuFlags(raw['flags'] as int),
-    );
+    final applicationId = Snowflake.parse(raw['application_id']!);
+
+    return client.applications[applicationId].skus.parse(raw);
   }
 
   /// Fetch an application's role connection metadata.
@@ -180,13 +190,6 @@ class ApplicationManager {
   }
 
   /// List this application's SKUs.
-  Future<List<Sku>> listSkus(Snowflake id) async {
-    final route = HttpRoute()
-      ..applications(id: id.toString())
-      ..skus();
-    final request = BasicRequest(route);
-
-    final response = await client.httpHandler.executeSafe(request);
-    return parseMany(response.jsonBody as List, parseSku);
-  }
+  @Deprecated('Use SkuManager.list')
+  Future<List<Sku>> listSkus(Snowflake id) => client.applications[id].skus.list();
 }

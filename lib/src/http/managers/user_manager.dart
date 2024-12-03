@@ -17,6 +17,7 @@ import 'package:nyxx/src/models/locale.dart';
 import 'package:nyxx/src/models/oauth2.dart';
 import 'package:nyxx/src/models/snowflake.dart';
 import 'package:nyxx/src/models/user/application_role_connection.dart';
+import 'package:nyxx/src/models/user/avatar_decoration_data.dart';
 import 'package:nyxx/src/models/user/connection.dart';
 import 'package:nyxx/src/models/user/user.dart';
 import 'package:nyxx/src/utils/cache_helpers.dart';
@@ -37,6 +38,7 @@ class UserManager extends ReadOnlyManager<User> {
     final hasFlags = raw['flags'] != null;
     final hasPremiumType = raw['premium_type'] != null;
     final hasPublicFlags = raw['public_flags'] != null;
+    final avatarDecorationData = maybeParse(raw['avatar_decoration_data'], parseAvatarDecorationData);
 
     return User(
       manager: this,
@@ -52,9 +54,10 @@ class UserManager extends ReadOnlyManager<User> {
       accentColor: hasAccentColor ? DiscordColor(raw['accent_color'] as int) : null,
       locale: hasLocale ? Locale.parse(raw['locale'] as String) : null,
       flags: hasFlags ? UserFlags(raw['flags'] as int) : null,
-      nitroType: hasPremiumType ? NitroType.parse(raw['premium_type'] as int) : NitroType.none,
+      nitroType: hasPremiumType ? NitroType(raw['premium_type'] as int) : NitroType.none,
       publicFlags: hasPublicFlags ? UserFlags(raw['public_flags'] as int) : null,
-      avatarDecorationHash: raw['avatar_decoration'] as String?,
+      avatarDecorationHash: avatarDecorationData?.asset,
+      avatarDecorationData: avatarDecorationData,
     );
   }
 
@@ -77,7 +80,7 @@ class UserManager extends ReadOnlyManager<User> {
       isFriendSyncEnabled: raw['friend_sync'] as bool,
       showActivity: raw['show_activity'] as bool,
       isTwoWayLink: raw['two_way_link'] as bool,
-      visibility: ConnectionVisibility.parse(raw['visibility'] as int),
+      visibility: ConnectionVisibility(raw['visibility'] as int),
     );
   }
 
@@ -87,6 +90,14 @@ class UserManager extends ReadOnlyManager<User> {
       platformName: raw['platform_name'] as String?,
       platformUsername: raw['platform_username'] as String?,
       metadata: (raw['metadata'] as Map).cast<String, String>(),
+    );
+  }
+
+  /// Parse an [AvatarDecorationData] from [raw].
+  AvatarDecorationData parseAvatarDecorationData(Map<String, Object?> raw) {
+    return AvatarDecorationData(
+      asset: raw['asset'] as String,
+      skuId: Snowflake.parse(raw['sku_id']!),
     );
   }
 

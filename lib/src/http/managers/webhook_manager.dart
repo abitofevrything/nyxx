@@ -30,7 +30,7 @@ class WebhookManager extends Manager<Webhook> {
     return Webhook(
       id: Snowflake.parse(raw['id']!),
       manager: this,
-      type: WebhookType.parse(raw['type'] as int),
+      type: WebhookType(raw['type'] as int),
       guildId: maybeParse(raw['guild_id'], Snowflake.parse),
       channelId: maybeParse(raw['channel_id'], Snowflake.parse),
       user: maybeParse(raw['user'], client.users.parse),
@@ -197,6 +197,8 @@ class WebhookManager extends Manager<Webhook> {
           ...builder.build(),
           if (threadName != null) 'thread_name': threadName,
           if (appliedTags != null) 'applied_tags': appliedTags.map((e) => e.toString()),
+          if (username != null) 'username': username,
+          if (avatarUrl != null) 'avatar_url': avatarUrl,
         }),
         queryParameters: queryParameters,
         authenticated: false,

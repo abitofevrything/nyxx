@@ -4,6 +4,7 @@ import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
 import 'package:nyxx/src/builders/presence.dart';
 import 'package:nyxx/src/builders/voice.dart';
+import 'package:nyxx/src/cache/cache.dart';
 import 'package:nyxx/src/client_options.dart';
 import 'package:nyxx/src/errors.dart';
 import 'package:nyxx/src/event_mixin.dart';
@@ -84,6 +85,9 @@ abstract class Nyxx {
   /// The logger for this client.
   Logger get logger;
 
+  /// The cache manager for this client.
+  CacheManager get cache;
+
   Completer<void> get _initializedCompleter;
 
   /// Create an instance of [NyxxRest] that can perform requests to the HTTP API and is
@@ -93,12 +97,12 @@ abstract class Nyxx {
 
   /// Create an instance of [NyxxRest] using the provided options.
   static Future<NyxxRest> connectRestWithOptions(RestApiOptions apiOptions, [RestClientOptions clientOptions = const RestClientOptions()]) async {
-    clientOptions.logger
-      ..info('Connecting to the REST API')
-      ..fine('Token: ${apiOptions.token}, Authorization: ${apiOptions.authorizationHeader}, User-Agent: ${apiOptions.userAgent}')
-      ..fine('Plugins: ${clientOptions.plugins.map((plugin) => plugin.name).join(', ')}');
-
     return _doConnect(apiOptions, clientOptions, () async {
+      clientOptions.logger
+        ..info('Connecting to the REST API')
+        ..fine('Token: ${apiOptions.token}, Authorization: ${apiOptions.authorizationHeader}, User-Agent: ${apiOptions.userAgent}')
+        ..fine('Plugins: ${clientOptions.plugins.map((plugin) => plugin.name).join(', ')}');
+
       final client = NyxxRest._(apiOptions, clientOptions);
 
       return client
@@ -118,12 +122,12 @@ abstract class Nyxx {
   ///
   /// Note that `client.user.id` will contain [Snowflake.zero] if there no `identify` scope.
   static Future<NyxxOAuth2> connectOAuth2WithOptions(OAuth2ApiOptions apiOptions, [RestClientOptions clientOptions = const RestClientOptions()]) async {
-    clientOptions.logger
-      ..info('Connecting to the REST API via OAuth2')
-      ..fine('Token: ${apiOptions.token}, Authorization: ${apiOptions.authorizationHeader}, User-Agent: ${apiOptions.userAgent}')
-      ..fine('Plugins: ${clientOptions.plugins.map((plugin) => plugin.name).join(', ')}');
-
     return _doConnect(apiOptions, clientOptions, () async {
+      clientOptions.logger
+        ..info('Connecting to the REST API via OAuth2')
+        ..fine('Token: ${apiOptions.token}, Authorization: ${apiOptions.authorizationHeader}, User-Agent: ${apiOptions.userAgent}')
+        ..fine('Plugins: ${clientOptions.plugins.map((plugin) => plugin.name).join(', ')}');
+
       final client = NyxxOAuth2._(apiOptions, clientOptions);
       final information = await client.users.fetchCurrentOAuth2Information();
 
@@ -143,16 +147,16 @@ abstract class Nyxx {
     GatewayApiOptions apiOptions, [
     GatewayClientOptions clientOptions = const GatewayClientOptions(),
   ]) async {
-    clientOptions.logger
-      ..info('Connecting to the Gateway API')
-      ..fine(
-        'Token: ${apiOptions.token}, Authorization: ${apiOptions.authorizationHeader}, User-Agent: ${apiOptions.userAgent},'
-        ' Intents: ${apiOptions.intents.value}, Payloads: ${apiOptions.payloadFormat.value}, Compression: ${apiOptions.compression.name},'
-        ' Shards: ${apiOptions.shards?.join(', ')}, Total shards: ${apiOptions.totalShards}, Large threshold: ${apiOptions.largeThreshold}',
-      )
-      ..fine('Plugins: ${clientOptions.plugins.map((plugin) => plugin.name).join(', ')}');
-
     return _doConnect(apiOptions, clientOptions, () async {
+      clientOptions.logger
+        ..info('Connecting to the Gateway API')
+        ..fine(
+          'Token: ${apiOptions.token}, Authorization: ${apiOptions.authorizationHeader}, User-Agent: ${apiOptions.userAgent},'
+          ' Intents: ${apiOptions.intents.value}, Payloads: ${apiOptions.payloadFormat.value}, Compression: ${apiOptions.compression.name},'
+          ' Shards: ${apiOptions.shards?.join(', ')}, Total shards: ${apiOptions.totalShards}, Large threshold: ${apiOptions.largeThreshold}',
+        )
+        ..fine('Plugins: ${clientOptions.plugins.map((plugin) => plugin.name).join(', ')}');
+
       final client = NyxxGateway._(apiOptions, clientOptions);
 
       client
@@ -197,6 +201,9 @@ class NyxxRest with ManagerMixin implements Nyxx {
 
   @override
   final Completer<void> _initializedCompleter = Completer();
+
+  @override
+  late final CacheManager cache = CacheManager(this);
 
   NyxxRest._(this.apiOptions, this.options);
 
@@ -253,6 +260,9 @@ class NyxxOAuth2 with ManagerMixin implements NyxxRest {
   @override
   final Completer<void> _initializedCompleter = Completer();
 
+  @override
+  late final CacheManager cache = CacheManager(this);
+
   NyxxOAuth2._(this.apiOptions, this.options);
 
   @override
@@ -305,6 +315,9 @@ class NyxxGateway with ManagerMixin, EventMixin implements NyxxRest {
 
   @override
   final Completer<void> _initializedCompleter = Completer();
+
+  @override
+  late final CacheManager cache = CacheManager(this);
 
   NyxxGateway._(this.apiOptions, this.options);
 
